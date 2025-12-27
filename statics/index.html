@@ -27,24 +27,26 @@ button{padding:10px 16px;background:#ff4d4d;color:#fff;border:none;border-radius
 
 <script>
 async function search(){
-  const q=document.getElementById("q").value;
+  const q=document.getElementById("q").value.trim();
   if(!q)return;
   const r=await fetch(`/api/search?q=${encodeURIComponent(q)}`);
   const d=await r.json();
   render(d.results);
 }
+
 async function loadTrending(){
   const r=await fetch("/api/trending");
   const d=await r.json();
   render(d.results);
 }
+
 function render(list){
   const g=document.getElementById("results");
   g.innerHTML="";
   list.forEach(v=>{
     const c=document.createElement("div");
     c.className="card";
-    c.onclick=()=>location.href=`watch.html?v=${v.videoId}`;
+    c.onclick=()=>location.href=`/static/watch.html?v=${v.videoId}`;
     c.innerHTML=`
       <img class="thumb" src="https://i.ytimg.com/vi/${v.videoId}/hqdefault.jpg">
       <div class="title">${v.title}</div>
@@ -52,6 +54,7 @@ function render(list){
     g.appendChild(c);
   });
 }
+
 loadTrending();
 </script>
 
