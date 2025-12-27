@@ -2,226 +2,182 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<title>動画再生 | 仙人YouTubeビュアー</title>
+<title>再生 | 仙人YouTubeビュアー</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 
 <style>
-body {
-  margin: 0;
-  background: #f5f6f8;
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+body{
+  margin:0;
+  font-family:system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  background:#000;
+  color:#fff;
+}
+video{
+  width:100%;
+  background:#000;
+}
+section{
+  padding:12px;
+}
+button{
+  padding:8px 12px;
+  border-radius:8px;
+  border:none;
+  background:#ef4444;
+  color:#fff;
+  margin:4px 4px 4px 0;
+  cursor:pointer;
+}
+.card{
+  background:#111;
+  padding:8px;
+  margin:6px 0;
+  border-radius:8px;
+  cursor:pointer;
+}
+.card:hover{
+  background:#1a1a1a;
 }
 
-header {
-  position: sticky;
-  top: 0;
-  z-index: 10;
-  background: #ffffff;
-  padding: 10px;
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  box-shadow: 0 2px 8px rgba(0,0,0,.1);
+/* ===== DL オーバーレイ ===== */
+#dlOverlay{
+  position:fixed;
+  inset:0;
+  background:rgba(0,0,0,.75);
+  display:none;
+  align-items:center;
+  justify-content:center;
+  z-index:9999;
 }
-
-header button {
-  padding: 8px 14px;
-  border-radius: 8px;
-  border: none;
-  background: #ef4444;
-  color: #fff;
-  font-size: 14px;
-  cursor: pointer;
+#dlBox{
+  background:#111;
+  padding:24px;
+  border-radius:16px;
+  text-align:center;
+  width:240px;
 }
-
-main {
-  padding: 12px;
+.spinner{
+  width:48px;
+  height:48px;
+  border:5px solid #333;
+  border-top:5px solid #ef4444;
+  border-radius:50%;
+  animation:spin 1s linear infinite;
+  margin:0 auto 16px;
 }
-
-.player-wrap {
-  background: #000;
-  border-radius: 12px;
-  overflow: hidden;
+@keyframes spin{
+  to{transform:rotate(360deg)}
 }
-
-iframe {
-  width: 100%;
-  aspect-ratio: 16 / 9;
-  border: none;
-}
-
-h1 {
-  font-size: 18px;
-  margin: 12px 0 4px;
-}
-
-.meta {
-  font-size: 13px;
-  color: #666;
-}
-
-.section {
-  margin-top: 24px;
-}
-
-.section h2 {
-  font-size: 16px;
-  margin-bottom: 10px;
-}
-
-.downloads a {
-  display: inline-block;
-  margin: 6px 8px 6px 0;
-  padding: 6px 10px;
-  border-radius: 8px;
-  background: #e5e7eb;
-  color: #111;
-  font-size: 13px;
-  text-decoration: none;
-}
-
-.list {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: 12px;
-}
-
-.card {
-  background: #fff;
-  border-radius: 10px;
-  overflow: hidden;
-  cursor: pointer;
-  box-shadow: 0 2px 6px rgba(0,0,0,.12);
-  transition: transform .15s;
-}
-
-.card:hover {
-  transform: translateY(-3px);
-}
-
-.card img {
-  width: 100%;
-  aspect-ratio: 16 / 9;
-  object-fit: cover;
-}
-
-.card .title {
-  padding: 6px;
-  font-size: 13px;
+#dlText{
+  font-size:14px;
+  color:#ddd;
 }
 </style>
 </head>
 
 <body>
 
-<header>
-  <button onclick="history.back()">← 戻る</button>
-  <strong>動画再生</strong>
-</header>
+<video id="player" controls></video>
 
-<main>
+<section>
+  <button onclick="setMode('inv')">Invidious</button>
+  <button onclick="setMode('noc')">NoCookie</button>
+  <button onclick="setMode('edu')">Education</button>
+  <br>
+  <button onclick="download('18')">⬇ 360p</button>
+  <button onclick="download('22')">⬇ HD</button>
+</section>
 
-  <div class="player-wrap">
-    <iframe id="player" allowfullscreen></iframe>
+<section id="info"></section>
+<section id="related"></section>
+<section id="comments"></section>
+
+<!-- DL Overlay -->
+<div id="dlOverlay">
+  <div id="dlBox">
+    <div class="spinner"></div>
+    <div id="dlText">ダウンロード準備中…</div>
   </div>
-
-  <h1 id="title">読み込み中…</h1>
-  <div class="meta" id="meta"></div>
-
-  <div class="section">
-    <h2>⬇ ダウンロード</h2>
-    <div class="downloads" id="downloads">
-      読み込み中…
-    </div>
-  </div>
-
-  <div class="section">
-    <h2>▶ 関連動画</h2>
-    <div class="list" id="related"></div>
-  </div>
-
-</main>
+</div>
 
 <script>
-// =============================
-// 動画ID取得
-// =============================
 const params = new URLSearchParams(location.search);
-const videoId = params.get("v");
+const vid = params.get("v");
+const player = document.getElementById("player");
+let mode = "inv";
 
-if (!videoId) {
-  alert("動画IDが見つかりません");
-  throw new Error("video id missing");
+function setMode(m){
+  mode = m;
+  loadVideo();
 }
 
-// =============================
-// プレイヤー（nocookie）
-// =============================
-document.getElementById("player").src =
-  `https://www.youtube-nocookie.com/embed/${videoId}`;
+async function loadVideo(){
+  if(mode==="noc"){
+    player.src = `https://www.youtube-nocookie.com/embed/${vid}`;
+    return;
+  }
+  if(mode==="edu"){
+    player.src = `https://www.youtubeeducation.com/embed/${vid}`;
+    return;
+  }
 
-// =============================
-// 動画情報 + 関連動画
-// =============================
-fetch(`/api/video?video_id=${videoId}`)
-  .then(res => {
-    if (!res.ok) throw new Error("video api error");
-    return res.json();
-  })
-  .then(data => {
-    document.getElementById("title").textContent = data.title || "タイトル不明";
-    document.getElementById("meta").textContent =
-      `${data.author || "不明"} ・ ${(data.viewCount || 0).toLocaleString()} 回再生`;
+  const r = await fetch(`/api/video/${vid}`);
+  const d = await r.json();
+  const v = d.video;
 
-    const related = document.getElementById("related");
-    related.innerHTML = "";
+  const mp4 = v.formatStreams?.find(f=>f.itag==="18");
+  if(mp4) player.src = mp4.url;
 
-    (data.recommended || []).forEach(v => {
-      if (!v.videoId) return;
+  info.innerHTML = `
+    <h3>${v.title}</h3>
+    <p>${v.author} / ${v.viewCount?.toLocaleString()} 回再生</p>
+  `;
 
-      const card = document.createElement("div");
-      card.className = "card";
-      card.onclick = () => {
-        location.href = `watch.html?v=${v.videoId}`;
-      };
-
-      card.innerHTML = `
-        <img src="https://i.ytimg.com/vi/${v.videoId}/hqdefault.jpg">
-        <div class="title">${v.title || ""}</div>
-      `;
-      related.appendChild(card);
-    });
-  })
-  .catch(() => {
-    alert("動画情報の取得に失敗しました（Invidious切替中）");
+  related.innerHTML = "<h4>関連動画</h4>";
+  d.related.forEach(rv=>{
+    const div=document.createElement("div");
+    div.className="card";
+    div.textContent=rv.title;
+    div.onclick=()=>location.href=`watch.html?v=${rv.videoId}`;
+    related.appendChild(div);
   });
 
-// =============================
-// ダウンロード情報
-// =============================
-fetch(`/api/download?video_id=${videoId}`)
-  .then(res => res.json())
-  .then(data => {
-    const box = document.getElementById("downloads");
-    box.innerHTML = "";
+  loadComments();
+}
 
-    (data.formats || []).forEach(f => {
-      const a = document.createElement("a");
-      a.href = f.url;
-      a.target = "_blank";
-      a.rel = "noopener";
-      a.textContent = `${f.quality} (${f.type})`;
-      box.appendChild(a);
-    });
-
-    if (!box.innerHTML) {
-      box.textContent = "利用可能な形式がありません";
-    }
-  })
-  .catch(() => {
-    document.getElementById("downloads").textContent =
-      "ダウンロード情報取得失敗";
+async function loadComments(){
+  const r = await fetch(`/api/comments/${vid}`);
+  const d = await r.json();
+  comments.innerHTML = "<h4>コメント</h4>";
+  d.comments?.forEach(c=>{
+    const div=document.createElement("div");
+    div.className="card";
+    div.innerHTML = `<b>${c.author}</b><br>${c.contentHtml}`;
+    comments.appendChild(div);
   });
+}
+
+/* ===== ダウンロード（アニメーション付き） ===== */
+function download(itag){
+  const overlay = document.getElementById("dlOverlay");
+  const text = document.getElementById("dlText");
+
+  overlay.style.display = "flex";
+  text.textContent = "ダウンロード開始中…";
+
+  // 少し待ってから遷移（UX向上）
+  setTimeout(()=>{
+    window.location.href = `/api/download/${vid}?itag=${itag}`;
+
+    // 数秒後に非表示（DLが始まるため）
+    setTimeout(()=>{
+      overlay.style.display = "none";
+    }, 3000);
+
+  }, 400);
+}
+
+loadVideo();
 </script>
 
 </body>
