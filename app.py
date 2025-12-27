@@ -30,13 +30,7 @@ VIDEO_APIS = [
     "https://yt.omada.cafe",
 ]
 
-SEARCH_APIS = [
-    "https://pol1.iv.ggtyler.dev",
-    "https://cal1.iv.ggtyler.dev",
-    "https://iv.melmac.space",
-    "https://invidious.0011.lt",
-    "https://yt.omada.cafe",
-]
+SEARCH_APIS = VIDEO_APIS
 
 CHANNEL_APIS = [
     "https://invidious.lunivers.trade",
@@ -48,9 +42,8 @@ CHANNEL_APIS = [
     "https://iv.duti.dev",
 ]
 
-PLAYLIST_APIS = CHANNEL_APIS
-
 COMMENTS_APIS = CHANNEL_APIS
+PLAYLIST_APIS = CHANNEL_APIS
 
 EDU_STREAM_API_BASE_URL = "https://siawaseok.duckdns.org/api/stream/"
 EDU_VIDEO_API_BASE_URL  = "https://siawaseok.duckdns.org/api/video2/"
@@ -81,13 +74,10 @@ def try_json(url, params=None):
 @app.get("/api/search")
 def api_search(q: str):
     results = []
-
     random.shuffle(SEARCH_APIS)
+
     for base in SEARCH_APIS:
-        data = try_json(
-            f"{base}/api/v1/search",
-            {"q": q, "type": "video"}
-        )
+        data = try_json(f"{base}/api/v1/search", {"q": q, "type": "video"})
         if not isinstance(data, list):
             continue
 
@@ -105,23 +95,6 @@ def api_search(q: str):
                 "count": len(results),
                 "results": results,
                 "source": base
-            }
-
-    # fallback
-    data = try_json("https://api-five-zeta-55.vercel.app/api/search", {"q": q})
-    if data:
-        for v in data.get("videos", []):
-            results.append({
-                "videoId": v.get("id"),
-                "title": v.get("title"),
-                "author": v.get("author"),
-            })
-
-        if results:
-            return {
-                "count": len(results),
-                "results": results,
-                "source": "api-five-zeta-55"
             }
 
     raise HTTPException(503, "Search unavailable")
@@ -172,32 +145,11 @@ def api_comments(video_id: str):
     return {"comments": [], "source": None}
 
 # ===============================
-# Channel
-# ===============================
-@app.get("/api/channel")
-def api_channel(channel_id: str):
-    for base in CHANNEL_APIS:
-        data = try_json(f"{base}/api/v1/channels/{channel_id}")
-        if data:
-            return data
-    raise HTTPException(503, "Channel unavailable")
-
-# ===============================
-# Playlist
-# ===============================
-@app.get("/api/playlist")
-def api_playlist(playlist_id: str):
-    for base in PLAYLIST_APIS:
-        data = try_json(f"{base}/api/v1/playlists/{playlist_id}")
-        if data:
-            return data
-    raise HTTPException(503, "Playlist unavailable")
-
-# ===============================
 # Download / Stream
 # ===============================
 @app.get("/api/download")
 def api_download(video_id: str, quality: str = "best"):
+    # yt-dlp / proxy 優先
     for base in [
         EDU_STREAM_API_BASE_URL,
         STREAM_YTDL_API_BASE_URL,
@@ -207,6 +159,7 @@ def api_download(video_id: str, quality: str = "best"):
         if data and data.get("url"):
             return RedirectResponse(data["url"])
 
+    # Invidious fallback
     for base in VIDEO_APIS:
         data = try_json(f"{base}/api/v1/videos/{video_id}")
         if not data:
