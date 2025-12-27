@@ -2,183 +2,168 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<title>再生 | 仙人YouTubeビュアー</title>
+<title>仙人YouTubeビュアー</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 
 <style>
-body{
-  margin:0;
-  font-family:system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-  background:#000;
-  color:#fff;
-}
-video{
-  width:100%;
-  background:#000;
-}
-section{
-  padding:12px;
-}
-button{
-  padding:8px 12px;
-  border-radius:8px;
-  border:none;
-  background:#ef4444;
-  color:#fff;
-  margin:4px 4px 4px 0;
-  cursor:pointer;
-}
-.card{
-  background:#111;
-  padding:8px;
-  margin:6px 0;
-  border-radius:8px;
-  cursor:pointer;
-}
-.card:hover{
-  background:#1a1a1a;
+body {
+  margin: 0;
+  font-family: system-ui, sans-serif;
+  background: #f4f6f8;
 }
 
-/* ===== DL オーバーレイ ===== */
-#dlOverlay{
-  position:fixed;
-  inset:0;
-  background:rgba(0,0,0,.75);
-  display:none;
-  align-items:center;
-  justify-content:center;
-  z-index:9999;
+header {
+  background: #ffffff;
+  padding: 14px;
+  border-bottom: 1px solid #ddd;
 }
-#dlBox{
-  background:#111;
-  padding:24px;
-  border-radius:16px;
-  text-align:center;
-  width:240px;
+
+h1 {
+  font-size: 18px;
+  margin: 0 0 6px 0;
 }
-.spinner{
-  width:48px;
-  height:48px;
-  border:5px solid #333;
-  border-top:5px solid #ef4444;
-  border-radius:50%;
-  animation:spin 1s linear infinite;
-  margin:0 auto 16px;
+
+.sub {
+  font-size: 13px;
+  color: #666;
 }
-@keyframes spin{
-  to{transform:rotate(360deg)}
+
+.player {
+  background: #000;
+  aspect-ratio: 16 / 9;
 }
-#dlText{
-  font-size:14px;
-  color:#ddd;
+
+iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+
+.controls {
+  display: flex;
+  gap: 8px;
+  padding: 12px;
+  background: #ffffff;
+  border-bottom: 1px solid #ddd;
+}
+
+button {
+  padding: 10px 14px;
+  border-radius: 0;
+  border: 1px solid #ccc;
+  background: #ffffff;
+  cursor: pointer;
+}
+
+button:hover {
+  background: #f0f0f0;
+}
+
+.section {
+  background: #ffffff;
+  margin: 12px;
+  padding: 12px;
+}
+
+.section h3 {
+  margin-top: 0;
+}
+
+.comment {
+  border-top: 1px solid #eee;
+  padding: 8px 0;
+}
+
+.author {
+  font-weight: bold;
+  font-size: 13px;
 }
 </style>
 </head>
 
 <body>
 
-<video id="player" controls></video>
+<header>
+  <h1 id="title">読み込み中...</h1>
+  <div class="sub" id="author"></div>
+</header>
 
-<section>
-  <button onclick="setMode('inv')">Invidious</button>
-  <button onclick="setMode('noc')">NoCookie</button>
-  <button onclick="setMode('edu')">Education</button>
-  <br>
-  <button onclick="download('18')">⬇ 360p</button>
-  <button onclick="download('22')">⬇ HD</button>
-</section>
+<div class="player">
+  <iframe id="player" allowfullscreen></iframe>
+</div>
 
-<section id="info"></section>
-<section id="related"></section>
-<section id="comments"></section>
+<div class="controls">
+  <button onclick="playNocookie()">nocookie 再生</button>
+  <button onclick="playNormal()">通常再生</button>
+</div>
 
-<!-- DL Overlay -->
-<div id="dlOverlay">
-  <div id="dlBox">
-    <div class="spinner"></div>
-    <div id="dlText">ダウンロード準備中…</div>
-  </div>
+<div class="section">
+  <h3>動画情報</h3>
+  <p id="desc">読み込み中...</p>
+</div>
+
+<div class="section">
+  <h3>コメント</h3>
+  <div id="comments">読み込み中...</div>
 </div>
 
 <script>
-const params = new URLSearchParams(location.search);
-const vid = params.get("v");
+const videoId = new URLSearchParams(location.search).get("v");
 const player = document.getElementById("player");
-let mode = "inv";
 
-function setMode(m){
-  mode = m;
-  loadVideo();
+function playNocookie() {
+  player.src = `https://www.youtube-nocookie.com/embed/${videoId}`;
 }
 
-async function loadVideo(){
-  if(mode==="noc"){
-    player.src = `https://www.youtube-nocookie.com/embed/${vid}`;
-    return;
-  }
-  if(mode==="edu"){
-    player.src = `https://www.youtubeeducation.com/embed/${vid}`;
-    return;
-  }
+function playNormal() {
+  player.src = `https://www.youtube.com/embed/${videoId}`;
+}
 
-  const r = await fetch(`/api/video/${vid}`);
-  const d = await r.json();
-  const v = d.video;
+// 初期は nocookie
+playNocookie();
 
-  const mp4 = v.formatStreams?.find(f=>f.itag==="18");
-  if(mp4) player.src = mp4.url;
-
-  info.innerHTML = `
-    <h3>${v.title}</h3>
-    <p>${v.author} / ${v.viewCount?.toLocaleString()} 回再生</p>
-  `;
-
-  related.innerHTML = "<h4>関連動画</h4>";
-  d.related.forEach(rv=>{
-    const div=document.createElement("div");
-    div.className="card";
-    div.textContent=rv.title;
-    div.onclick=()=>location.href=`watch.html?v=${rv.videoId}`;
-    related.appendChild(div);
+// 動画情報取得
+fetch(`/api/video?video_id=${videoId}`)
+  .then(res => res.json())
+  .then(data => {
+    const v = data.video;
+    document.getElementById("title").textContent = v.title || "タイトル不明";
+    document.getElementById("author").textContent =
+      `${v.author || ""} / ${data.source}`;
+    document.getElementById("desc").textContent =
+      v.description || "説明なし";
+  })
+  .catch(() => {
+    document.getElementById("title").textContent = "動画情報取得失敗";
   });
 
-  loadComments();
-}
+// コメント取得
+fetch(`/api/comments?video_id=${videoId}`)
+  .then(res => res.json())
+  .then(data => {
+    const box = document.getElementById("comments");
+    box.innerHTML = "";
 
-async function loadComments(){
-  const r = await fetch(`/api/comments/${vid}`);
-  const d = await r.json();
-  comments.innerHTML = "<h4>コメント</h4>";
-  d.comments?.forEach(c=>{
-    const div=document.createElement("div");
-    div.className="card";
-    div.innerHTML = `<b>${c.author}</b><br>${c.contentHtml}`;
-    comments.appendChild(div);
+    if (!data.comments.length) {
+      box.textContent = "コメントがありません";
+      return;
+    }
+
+    data.comments.forEach(c => {
+      const div = document.createElement("div");
+      div.className = "comment";
+      div.innerHTML = `
+        <div class="author">${c.author || "匿名"}</div>
+        <div>${c.content || ""}</div>
+      `;
+      box.appendChild(div);
+    });
+  })
+  .catch(() => {
+    document.getElementById("comments").textContent =
+      "コメント取得失敗";
   });
-}
-
-/* ===== ダウンロード（アニメーション付き） ===== */
-function download(itag){
-  const overlay = document.getElementById("dlOverlay");
-  const text = document.getElementById("dlText");
-
-  overlay.style.display = "flex";
-  text.textContent = "ダウンロード開始中…";
-
-  // 少し待ってから遷移（UX向上）
-  setTimeout(()=>{
-    window.location.href = `/api/download/${vid}?itag=${itag}`;
-
-    // 数秒後に非表示（DLが始まるため）
-    setTimeout(()=>{
-      overlay.style.display = "none";
-    }, 3000);
-
-  }, 400);
-}
-
-loadVideo();
 </script>
 
 </body>
-</html>
+  </html>
