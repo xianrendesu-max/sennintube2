@@ -1,124 +1,125 @@
----
-
-# app.py（完全・省略なし）
-
-```python
-import json
-import urllib.parse
-import requests
-
-from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
+import requests
+import random
 
 app = FastAPI()
 
-app.mount("/static", StaticFiles(directory="static"), name="static")
-templates = Jinja2Templates(directory="templates")
+# ===============================
+# Invidious インスタンス（複数）
+# ===============================
+INVIDIOUS_INSTANCES = [
+    "https://pol1.iv.ggtyler.dev",
+    "https://vid.puffyan.us",
+    "https://invidious.snopyta.org",
+]
 
-UA = {"User-Agent": "Mozilla/5.0"}
+def pick_instance():
+    return random.choice(INVIDIOUS_INSTANCES)
 
-INVIDIOUS = "https://pol1.iv.ggtyler.dev"
-EDU_VIDEO_API = "https://siawaseok.duckdns.org/api/video2/"
-EDU_STREAM_API = "https://siawaseok.duckdns.org/api/stream/"
-YTDLP_API = "https://yudlp.vercel.app/stream/"
-M3U8_API = "https://yudlp.vercel.app/m3u8/"
+# ===============================
+# 静的HTML配信
+# ===============================
+app.mount("/", StaticFiles(directory="statics", html=True), name="static")
 
-# =========================
+# ===============================
 # 検索
-# =========================
+# ===============================
 @app.get("/api/search")
-def api_search(q: str):
-    url = f"{INVIDIOUS}/api/v1/search?q={urllib.parse.quote(q)}&hl=jp"
-    r = requests.get(url, headers=UA, timeout=10)
-    data = r.json()
+def search(q: str):
+    inst = pick_instance()
+    try:
+        r = requests.get(
+            f"{inst}/api/v1/search",
+            params={"q": q, "type": "video"},
+            timeout=10
+        )
+        r.raise_for_status()
+        return {
+            "used_instance": inst,
+            "results": r.json()
+        }
+    except Exception:
+        raise HTTPException(status_code=500, detail="search failed")
 
-    results = []
-    for v in data:
-        if v.get("type") == "video":
-            results.append({
-                "id": v.get("videoId"),
-                "title": v.get("title"),
-                "author": v.get("author")
-            })
+# ===============================
+# 動画情報 + 関連動画
+# ===============================
+@app.get("/api/video/{video_id}")
+def video(video_id: str):
+    inst = pick_instance()
+    try:
+        r = requests.get(
+            f"{inst}/api/v1/videos/{video_id}",
+            timeout=10
+        )
+        r.raise_for_status()
+        data = r.json()
 
-    return {
-        "results": results,
-        "used_instance": "invidious"
-    }
+        return {
+            "video": {
+                "title": data.get("title"),
+                "description_html": data.get("descriptionHtml"),
+                "author": data.get("author"),
+                "view_count": data.get("viewCount"),
+            },
+            "related": data.get("recommendedVideos", [])
+        }
+    except Exception:
+        raise HTTPException(status_code=500, detail="video failed")
 
-# =========================
-# 動画情報
-# =========================
-@app.get("/api/video/{videoid}")
-def api_video(videoid: str):
-    r = requests.get(EDU_VIDEO_API + videoid, headers=UA, timeout=10)
-    t = r.json()
-
-    return {
-        "video": {
-            "title": t.get("title", ""),
-            "description_html": t.get("description", {}).get("formatted", "")
-        },
-        "related": t.get("related", [])
-    }
-
-# =========================
+# ===============================
 # コメント
-# =========================
-@app.get("/api/comments/{videoid}")
-def api_comments(videoid: str):
-    r = requests.get(
-        f"{INVIDIOUS}/api/v1/comments/{videoid}",
-        headers=UA,
-        timeout=10
-    )
-    data = r.json()
+# ===============================
+@app.get("/api/comments/{video_id}")
+def comments(video_id: str):
+    inst = pick_instance()
+    try:
+        r = requests.get(
+            f"{inst}/api/v1/comments/{video_id}",
+            timeout=10
+        )
+        r.raise_for_status()
+        return {
+            "comments": r.json().get("comments", [])
+        }
+    except Exception:
+        raise HTTPException(status_code=500, detail="comments failed")
 
-    comments = []
-    for c in data.get("comments", []):
-        comments.append({
-            "author": c.get("author"),
-            "body": c.get("contentHtml")
-        })
+# ===============================
+# ダウンロードURL取得
+# ===============================
+@app.get("/api/download/{video_id}")
+def download(video_id: str):
+    inst = pick_instance()
+    try:
+        r = requests.get(
+            f"{inst}/api/v1/videos/{video_id}",
+            timeout=10
+        )
+        r.raise_for_status()
+        data = r.json()
 
-    return {"comments": comments}
+        formats = []
 
-# =========================
-# ダウンロード
-# =========================
-@app.get("/api/download/{videoid}")
-def api_download(videoid: str):
-    r = requests.get(YTDLP_API + videoid, headers=UA, timeout=10)
-    return r.json()
+        for f in data.get("adaptiveFormats", []):
+            if f.get("url"):
+                formats.append({
+                    "url": f["url"],
+                    "ext": f.get("container"),
+                    "quality": f.get("qualityLabel")
+                })
 
-# =========================
-# EDU embed
-# =========================
-@app.get("/api/edu/{videoid}", response_class=HTMLResponse)
-def api_edu_embed(request: Request, videoid: str):
-    r = requests.get(EDU_STREAM_API + videoid, headers=UA, timeout=10)
-    url = r.json().get("url", "")
+        return {"formats": formats}
+    except Exception:
+        raise HTTPException(status_code=500, detail="download failed")
 
-    return templates.TemplateResponse(
-        "embed.html",
-        {"request": request, "url": url}
-    )
-
-# =========================
-# 高画質（M3U8）
-# =========================
-@app.get("/api/stream_high/{videoid}", response_class=HTMLResponse)
-def api_stream_high(request: Request, videoid: str):
-    r = requests.get(M3U8_API + videoid, headers=UA, timeout=10)
-    formats = r.json().get("m3u8_formats", [])
-
-    best = ""
-    if formats:
-        best = formats[-1].get("url", "")
-
-    return templates.TemplateResponse(
-        "embed_high.html",
-        {"request": request, "url": best}
-    )
+# ===============================
+# education用ダミーembed
+# ===============================
+@app.get("/api/edu/{video_id}")
+def education(video_id: str):
+    return JSONResponse({
+        "embed": f"https://www.youtubeeducation.com/embed/{video_id}"
+    })
