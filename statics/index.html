@@ -4,58 +4,138 @@
 <meta charset="UTF-8">
 <title>仙人YouTubeビュアー</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
+
 <style>
-body{margin:0;font-family:system-ui;background:#f5f6f8}
-header{display:flex;gap:8px;padding:12px;background:#fff;position:sticky;top:0}
-input{flex:1;padding:10px;font-size:16px}
-button{padding:10px 16px;background:#ff4d4d;color:#fff;border:none;border-radius:8px}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:16px;padding:16px}
-.card{background:#fff;border-radius:12px;overflow:hidden;cursor:pointer}
-.thumb{width:100%;aspect-ratio:16/9;object-fit:cover}
-.title{font-weight:bold;font-size:14px;padding:8px}
-.author{font-size:12px;color:#666;padding:0 8px 8px}
+body {
+  margin: 0;
+  font-family: system-ui, sans-serif;
+  background: #f5f6f8;
+}
+
+header {
+  background: #fff;
+  padding: 12px;
+  display: flex;
+  gap: 8px;
+  position: sticky;
+  top: 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,.1);
+}
+
+input {
+  flex: 1;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid #ccc;
+  font-size: 16px;
+}
+
+button {
+  padding: 10px 16px;
+  border-radius: 8px;
+  border: none;
+  background: #ef4444;
+  color: #fff;
+  cursor: pointer;
+}
+
+#status {
+  padding: 8px 16px;
+  font-size: 13px;
+  color: #555;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 16px;
+  padding: 16px;
+}
+
+.card {
+  background: #fff;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 4px 10px rgba(0,0,0,.1);
+  cursor: pointer;
+  transition: .15s;
+}
+
+.card:hover {
+  transform: translateY(-4px);
+}
+
+.thumb {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+}
+
+.card-body {
+  padding: 10px;
+}
+
+.title {
+  font-size: 14px;
+  font-weight: bold;
+}
+
+.author {
+  font-size: 12px;
+  color: #666;
+}
 </style>
 </head>
+
 <body>
 
 <header>
-  <input id="q" placeholder="動画検索" onkeydown="if(event.key==='Enter')search()">
+  <input id="q" placeholder="動画を検索" onkeydown="if(event.key==='Enter')search()">
   <button onclick="search()">検索</button>
 </header>
 
+<div id="status"></div>
 <div id="results" class="grid"></div>
 
 <script>
-async function search(){
-  const q=document.getElementById("q").value.trim();
-  if(!q)return;
-  const r=await fetch(`/api/search?q=${encodeURIComponent(q)}`);
-  const d=await r.json();
-  render(d.results);
-}
+async function search() {
+  const q = document.getElementById("q").value.trim();
+  if (!q) return;
 
-async function loadTrending(){
-  const r=await fetch("/api/trending");
-  const d=await r.json();
-  render(d.results);
-}
+  const status = document.getElementById("status");
+  const grid = document.getElementById("results");
 
-function render(list){
-  const g=document.getElementById("results");
-  g.innerHTML="";
-  list.forEach(v=>{
-    const c=document.createElement("div");
-    c.className="card";
-    c.onclick=()=>location.href=`/static/watch.html?v=${v.videoId}`;
-    c.innerHTML=`
-      <img class="thumb" src="https://i.ytimg.com/vi/${v.videoId}/hqdefault.jpg">
-      <div class="title">${v.title}</div>
-      <div class="author">${v.author}</div>`;
-    g.appendChild(c);
-  });
-}
+  status.textContent = "検索中...";
+  grid.innerHTML = "";
 
-loadTrending();
+  try {
+    const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+    const data = await res.json();
+
+    status.textContent =
+      `検索結果: ${data.results.length}件 / 使用中: ${data.used_instance}`;
+
+    data.results.forEach(v => {
+      const card = document.createElement("div");
+      card.className = "card";
+      card.onclick = () => {
+        location.href = `watch.html?v=${v.videoId}`;
+      };
+
+      card.innerHTML = `
+        <img class="thumb" src="https://i.ytimg.com/vi/${v.videoId}/hqdefault.jpg">
+        <div class="card-body">
+          <div class="title">${v.title}</div>
+          <div class="author">${v.author}</div>
+        </div>
+      `;
+      grid.appendChild(card);
+    });
+
+  } catch (e) {
+    status.textContent = "通信エラー（全Invidious失敗）";
+  }
+}
 </script>
 
 </body>
