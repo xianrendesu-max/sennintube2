@@ -12,18 +12,21 @@ app = FastAPI()
 # ===============================
 # 静的ファイル
 # ===============================
-if not os.path.isdir("statics"):
+STATIC_DIR = "statics"
+
+if not os.path.isdir(STATIC_DIR):
     raise RuntimeError("statics directory not found")
 
-app.mount("/static", StaticFiles(directory="statics"), name="static")
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 @app.get("/")
 def root():
-    return FileResponse("statics/index.html")
+    return FileResponse(f"{STATIC_DIR}/index.html")
 
 
 # ===============================
 # Invidious インスタンス
+# （生存率が高いものだけ）
 # ===============================
 INVIDIOUS = {
     "search": [
@@ -59,7 +62,10 @@ def fetch_any(instances, path, params=None):
                 base + path,
                 params=params,
                 timeout=TIMEOUT,
-                headers={"User-Agent": "Mozilla/5.0"}
+                headers={
+                    "User-Agent": "Mozilla/5.0",
+                    "Accept": "application/json"
+                }
             )
             if r.status_code == 200:
                 return r.json(), base
@@ -71,7 +77,7 @@ def fetch_any(instances, path, params=None):
 
 
 # ===============================
-# 🔍 検索 API（← これが無かった）
+# 🔍 検索 API
 # ===============================
 @app.get("/api/search")
 def api_search(q: str = Query(...)):
@@ -117,7 +123,7 @@ def api_video(video_id: str = Query(...)):
             }
         }
 
-    # --- yt-dlp fallback ---
+    # --- yt-dlp フォールバック ---
     try:
         cmd = [
             "yt-dlp",
@@ -126,12 +132,14 @@ def api_video(video_id: str = Query(...)):
             "--no-playlist",
             f"https://www.youtube.com/watch?v={video_id}"
         ]
+
         p = subprocess.run(
             cmd,
             capture_output=True,
             text=True,
             timeout=30
         )
+
         info = json.loads(p.stdout)
 
         return {
@@ -180,3 +188,41 @@ def api_comments(video_id: str = Query(...)):
         "used_instance": used,
         "comments": comments
     }
+
+
+# ===============================
+# ⬇ ダウンロード API（360p・最終安定）
+# ===============================
+@app.get("/api/download")
+def api_download(video_id: str = Query(...)):
+    try:
+        cmd = [
+            "yt-dlp",
+            "-f",
+            "best[height<=360]/best",
+            "-g",
+            f"https://www.youtube.com/watch?v={video_id}"
+        ]
+
+        p = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+
+        url = p.stdout.strip()
+
+        if not url:
+            raise Exception("No download URL")
+
+        return {
+            "url": url,
+            "source": "yt-dlp"
+        }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Download failed: {e}"
+        )
