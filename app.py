@@ -26,6 +26,11 @@ def root():
 # Invidious インスタンス
 # ===============================
 INVIDIOUS = {
+    "search": [
+        "https://pol1.iv.ggtyler.dev",
+        "https://iv.melmac.space",
+        "https://invidious.0011.lt"
+    ],
     "video": [
         "https://pol1.iv.ggtyler.dev",
         "https://cal1.iv.ggtyler.dev",
@@ -46,6 +51,8 @@ TIMEOUT = 6
 # ===============================
 def fetch_any(instances, path, params=None):
     random.shuffle(instances)
+    last_error = None
+
     for base in instances:
         try:
             r = requests.get(
@@ -56,13 +63,38 @@ def fetch_any(instances, path, params=None):
             )
             if r.status_code == 200:
                 return r.json(), base
-        except:
+        except Exception as e:
+            last_error = e
             continue
-    return None, None
+
+    return None, last_error
 
 
 # ===============================
-# 動画情報API
+# 🔍 検索 API（← これが無かった）
+# ===============================
+@app.get("/api/search")
+def api_search(q: str = Query(...)):
+    data, err = fetch_any(
+        INVIDIOUS["search"],
+        "/api/v1/search",
+        {"q": q, "type": "video"}
+    )
+
+    if not data:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Invidious search unavailable: {err}"
+        )
+
+    return {
+        "results": data,
+        "source": "invidious"
+    }
+
+
+# ===============================
+# 🎬 動画情報 API
 # ===============================
 @app.get("/api/video")
 def api_video(video_id: str = Query(...)):
@@ -85,7 +117,7 @@ def api_video(video_id: str = Query(...)):
             }
         }
 
-    # --- yt-dlp fallback（最終手段）---
+    # --- yt-dlp fallback ---
     try:
         cmd = [
             "yt-dlp",
@@ -113,6 +145,7 @@ def api_video(video_id: str = Query(...)):
                 "lengthSeconds": info.get("duration")
             }
         }
+
     except Exception as e:
         raise HTTPException(
             status_code=503,
@@ -121,10 +154,10 @@ def api_video(video_id: str = Query(...)):
 
 
 # ===============================
-# コメントAPI
+# 💬 コメント API
 # ===============================
 @app.get("/api/comments")
-def api_comments(video_id: str):
+def api_comments(video_id: str = Query(...)):
     data, used = fetch_any(
         INVIDIOUS["comments"],
         f"/api/v1/comments/{video_id}"
@@ -146,4 +179,4 @@ def api_comments(video_id: str):
     return {
         "used_instance": used,
         "comments": comments
-}
+    }
