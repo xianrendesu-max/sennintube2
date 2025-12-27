@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 import requests
@@ -48,25 +48,9 @@ CHANNEL_APIS = [
     "https://iv.duti.dev",
 ]
 
-PLAYLIST_APIS = [
-    "https://invidious.lunivers.trade",
-    "https://invidious.ducks.party",
-    "https://super8.absturztau.be",
-    "https://invidious.nikkosphere.com",
-    "https://yt.omada.cafe",
-    "https://iv.melmac.space",
-    "https://iv.duti.dev",
-]
+PLAYLIST_APIS = CHANNEL_APIS
 
-COMMENTS_APIS = [
-    "https://invidious.lunivers.trade",
-    "https://invidious.ducks.party",
-    "https://super8.absturztau.be",
-    "https://invidious.nikkosphere.com",
-    "https://yt.omada.cafe",
-    "https://iv.duti.dev",
-    "https://iv.melmac.space",
-]
+COMMENTS_APIS = CHANNEL_APIS
 
 EDU_STREAM_API_BASE_URL = "https://siawaseok.duckdns.org/api/stream/"
 EDU_VIDEO_API_BASE_URL  = "https://siawaseok.duckdns.org/api/video2/"
@@ -92,7 +76,7 @@ def try_json(url, params=None):
     return None
 
 # ===============================
-# Search（総当たり＋正規化）
+# Search
 # ===============================
 @app.get("/api/search")
 def api_search(q: str):
@@ -118,11 +102,12 @@ def api_search(q: str):
 
         if results:
             return {
+                "count": len(results),
                 "results": results,
                 "source": base
             }
 
-    # 補助API
+    # fallback
     data = try_json("https://api-five-zeta-55.vercel.app/api/search", {"q": q})
     if data:
         for v in data.get("videos", []):
@@ -134,14 +119,15 @@ def api_search(q: str):
 
         if results:
             return {
+                "count": len(results),
                 "results": results,
                 "source": "api-five-zeta-55"
             }
 
-    raise HTTPException(503, "Search unavailable (all instances failed)")
+    raise HTTPException(503, "Search unavailable")
 
 # ===============================
-# Video Info（総当たり）
+# Video Info
 # ===============================
 @app.get("/api/video")
 def api_video(video_id: str):
@@ -161,19 +147,12 @@ def api_video(video_id: str):
 
     edu = try_json(f"{EDU_VIDEO_API_BASE_URL}{video_id}")
     if edu:
-        return {
-            "title": edu.get("title"),
-            "author": edu.get("author"),
-            "description": edu.get("description"),
-            "viewCount": edu.get("viewCount"),
-            "lengthSeconds": edu.get("lengthSeconds"),
-            "source": "edu"
-        }
+        return edu
 
     raise HTTPException(503, "Video info unavailable")
 
 # ===============================
-# Comments（総当たり）
+# Comments
 # ===============================
 @app.get("/api/comments")
 def api_comments(video_id: str):
@@ -215,11 +194,10 @@ def api_playlist(playlist_id: str):
     raise HTTPException(503, "Playlist unavailable")
 
 # ===============================
-# Download / Stream（総当たり）
+# Download / Stream
 # ===============================
 @app.get("/api/download")
 def api_download(video_id: str, quality: str = "best"):
-    # EDU / yt-dlp proxy
     for base in [
         EDU_STREAM_API_BASE_URL,
         STREAM_YTDL_API_BASE_URL,
@@ -229,7 +207,6 @@ def api_download(video_id: str, quality: str = "best"):
         if data and data.get("url"):
             return RedirectResponse(data["url"])
 
-    # Invidious adaptiveFormats
     for base in VIDEO_APIS:
         data = try_json(f"{base}/api/v1/videos/{video_id}")
         if not data:
@@ -242,7 +219,4 @@ def api_download(video_id: str, quality: str = "best"):
             if quality == "best" or quality in label:
                 return RedirectResponse(f["url"])
 
-    raise HTTPException(
-        503,
-        "Download unavailable (all Invidious / EDU / yt-dlp failed)"
-            )
+    raise HTTPException(503, "Download unavailable")
