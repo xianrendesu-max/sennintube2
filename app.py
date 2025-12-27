@@ -1,5 +1,4 @@
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 import requests
 import random
@@ -8,115 +7,199 @@ import os
 app = FastAPI()
 
 # ===============================
-# Invidious instances
+# Invidious インスタンス（用途別）
 # ===============================
-INVIDIOUS = [
-    "https://pol1.iv.ggtyler.dev",
-    "https://vid.puffyan.us",
-    "https://invidious.snopyta.org",
-]
-
-def pick():
-    return random.choice(INVIDIOUS)
+INSTANCES = {
+    "video": [
+        "https://invidious.exma.de",
+        "https://invidious.f5.si",
+        "https://siawaseok-wakame-server2.glitch.me",
+        "https://lekker.gay",
+        "https://id.420129.xyz",
+        "https://invid-api.poketube.fun",
+        "https://eu-proxy.poketube.fun",
+        "https://cal1.iv.ggtyler.dev",
+        "https://pol1.iv.ggtyler.dev"
+    ],
+    "search": [
+        "https://pol1.iv.ggtyler.dev",
+        "https://youtube.mosesmang.com",
+        "https://iteroni.com",
+        "https://invidious.0011.lt",
+        "https://iv.melmac.space",
+        "https://rust.oskamp.nl"
+    ],
+    "channel": [
+        "https://siawaseok-wakame-server2.glitch.me",
+        "https://id.420129.xyz",
+        "https://invidious.0011.lt",
+        "https://invidious.nietzospannend.nl"
+    ],
+    "playlist": [
+        "https://siawaseok-wakame-server2.glitch.me",
+        "https://invidious.0011.lt",
+        "https://invidious.nietzospannend.nl",
+        "https://youtube.mosesmang.com",
+        "https://iv.melmac.space",
+        "https://lekker.gay"
+    ],
+    "comments": [
+        "https://siawaseok-wakame-server2.glitch.me",
+        "https://invidious.0011.lt",
+        "https://invidious.nietzospannend.nl"
+    ]
+}
 
 # ===============================
-# Static files
+# 共通リクエスト（フェイルオーバー）
+# ===============================
+def fetch_with_fallback(instances, path, params=None):
+    random.shuffle(instances)
+
+    for base in instances:
+        try:
+            r = requests.get(
+                f"{base}{path}",
+                params=params,
+                timeout=10
+            )
+            r.raise_for_status()
+            return r.json(), base
+        except Exception:
+            continue
+
+    raise HTTPException(
+        status_code=502,
+        detail="All Invidious instances failed"
+    )
+
+# ===============================
+# API : 検索
+# ===============================
+@app.get("/api/search")
+def api_search(q: str):
+    data, used = fetch_with_fallback(
+        INSTANCES["search"],
+        "/api/v1/search",
+        {"q": q, "type": "video"}
+    )
+    return {
+        "results": data,
+        "used_instance": used
+    }
+
+# ===============================
+# API : トレンド
+# ===============================
+@app.get("/api/trending")
+def api_trending(region: str = "JP"):
+    data, _ = fetch_with_fallback(
+        INSTANCES["search"],
+        "/api/v1/trending",
+        {"region": region}
+    )
+    return data
+
+# ===============================
+# API : 動画情報 + 関連動画
+# ===============================
+@app.get("/api/video")
+def api_video(video_id: str):
+    data, used = fetch_with_fallback(
+        INSTANCES["video"],
+        f"/api/v1/videos/{video_id}"
+    )
+
+    return {
+        "title": data.get("title"),
+        "description": data.get("description"),
+        "author": data.get("author"),
+        "viewCount": data.get("viewCount"),
+        "recommended": data.get("recommendedVideos", []),
+        "used_instance": used
+    }
+
+# ===============================
+# API : コメント
+# ===============================
+@app.get("/api/comments")
+def api_comments(video_id: str):
+    data, used = fetch_with_fallback(
+        INSTANCES["comments"],
+        f"/api/v1/comments/{video_id}"
+    )
+    data["used_instance"] = used
+    return data
+
+# ===============================
+# API : チャンネル情報
+# ===============================
+@app.get("/api/channel")
+def api_channel(channel_id: str):
+    data, used = fetch_with_fallback(
+        INSTANCES["channel"],
+        f"/api/v1/channels/{channel_id}"
+    )
+    data["used_instance"] = used
+    return data
+
+# ===============================
+# API : プレイリスト
+# ===============================
+@app.get("/api/playlist")
+def api_playlist(list_id: str):
+    data, used = fetch_with_fallback(
+        INSTANCES["playlist"],
+        f"/api/v1/playlists/{list_id}"
+    )
+    data["used_instance"] = used
+    return data
+
+# ===============================
+# API : ダウンロード（360p / m3u8）
+# ===============================
+@app.get("/api/download")
+def api_download(video_id: str):
+    data, _ = fetch_with_fallback(
+        INSTANCES["video"],
+        f"/api/v1/videos/{video_id}"
+    )
+
+    formats = []
+
+    for f in data.get("adaptiveFormats", []):
+        url = f.get("url")
+        if not url:
+            continue
+
+        if f.get("itag") == "18":
+            formats.append({
+                "quality": "360p",
+                "type": "mp4",
+                "url": url
+            })
+
+        if "m3u8" in f.get("type", ""):
+            formats.append({
+                "quality": f.get("qualityLabel", "auto"),
+                "type": "m3u8",
+                "url": url
+            })
+
+    if not formats:
+        raise HTTPException(404, "No downloadable formats")
+
+    return {"formats": formats}
+
+# ===============================
+# 静的ファイル
+# / → index.html（307なし）
 # ===============================
 if not os.path.isdir("statics"):
     raise RuntimeError("Directory 'statics' does not exist")
 
-# ⭐ 重要：/static にマウント
-app.mount("/static", StaticFiles(directory="statics", html=True), name="static")
-
-# ルートは index.html にリダイレクト
-@app.get("/")
-def root():
-    return RedirectResponse("/static/index.html")
-
-# ===============================
-# Search
-# ===============================
-@app.get("/api/search")
-def search(q: str):
-    inst = pick()
-    r = requests.get(
-        f"{inst}/api/v1/search",
-        params={"q": q, "type": "video"},
-        timeout=10
+app.mount(
+    "/",
+    StaticFiles(directory="statics", html=True),
+    name="static"
     )
-    r.raise_for_status()
-    return {"results": r.json(), "instance": inst}
-
-# ===============================
-# Trending
-# ===============================
-@app.get("/api/trending")
-def trending(region: str = "JP"):
-    inst = pick()
-    r = requests.get(
-        f"{inst}/api/v1/trending",
-        params={"region": region},
-        timeout=10
-    )
-    r.raise_for_status()
-    return {"results": r.json()}
-
-# ===============================
-# Video + related
-# ===============================
-@app.get("/api/video/{video_id}")
-def video(video_id: str):
-    inst = pick()
-    r = requests.get(f"{inst}/api/v1/videos/{video_id}", timeout=10)
-    r.raise_for_status()
-    d = r.json()
-    return {
-        "title": d.get("title"),
-        "description": d.get("description"),
-        "related": d.get("recommendedVideos", [])
-    }
-
-# ===============================
-# Comments
-# ===============================
-@app.get("/api/comments/{video_id}")
-def comments(video_id: str):
-    inst = pick()
-    r = requests.get(f"{inst}/api/v1/comments/{video_id}", timeout=10)
-    r.raise_for_status()
-    return {"comments": r.json().get("comments", [])}
-
-# ===============================
-# 360p download (itag 18)
-# ===============================
-@app.get("/api/download/360p/{video_id}")
-def download_360p(video_id: str):
-    inst = pick()
-    r = requests.get(f"{inst}/api/v1/videos/{video_id}", timeout=10)
-    r.raise_for_status()
-    d = r.json()
-
-    for f in d.get("adaptiveFormats", []):
-        if f.get("itag") == "18" and f.get("url"):
-            return {"url": f["url"]}
-
-    raise HTTPException(status_code=404, detail="360p stream not found")
-
-# ===============================
-# m3u8 (highest quality)
-# ===============================
-@app.get("/api/download/m3u8/{video_id}")
-def download_m3u8(video_id: str):
-    inst = pick()
-    r = requests.get(f"{inst}/api/v1/videos/{video_id}", timeout=10)
-    r.raise_for_status()
-    d = r.json()
-
-    streams = [
-        f for f in d.get("adaptiveFormats", [])
-        if f.get("type", "").startswith("video") and f.get("url")
-    ]
-    if not streams:
-        raise HTTPException(status_code=404, detail="m3u8 not found")
-
-    return {"url": streams[0]["url"]}
