@@ -1,155 +1,131 @@
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import StreamingResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 import requests
-import os
+import random
+import time
 
 app = FastAPI()
 
-# ===============================
-# Invidious インスタンス定義
-# ===============================
-INVIDIOUS = {
-    "search": [
-        "https://pol1.iv.ggtyler.dev/",
-        "https://youtube.mosesmang.com/",
-        "https://iteroni.com/",
-        "https://invidious.0011.lt/",
-        "https://iv.melmac.space/",
-        "https://rust.oskamp.nl/"
-    ],
-    "video": [
-        "https://invidious.exma.de/",
-        "https://invidious.f5.si/",
-        "https://siawaseok-wakame-server2.glitch.me/",
-        "https://lekker.gay/",
-        "https://id.420129.xyz/",
-        "https://invid-api.poketube.fun/",
-        "https://eu-proxy.poketube.fun/",
-        "https://cal1.iv.ggtyler.dev/",
-        "https://pol1.iv.ggtyler.dev/"
-    ],
-    "comments": [
-        "https://siawaseok-wakame-server2.glitch.me/",
-        "https://invidious.0011.lt/",
-        "https://invidious.nietzospannend.nl/"
-    ]
+# =========================
+# Invidious instances
+# =========================
+INSTANCES = [
+    "https://pol1.iv.ggtyler.dev",
+    "https://cal1.iv.ggtyler.dev",
+    "https://iv.melmac.space",
+    "https://invidious.0011.lt",
+    "https://id.420129.xyz"
+]
+
+HEADERS = {
+    "User-Agent": "Mozilla/5.0",
+    "Accept": "*/*",
+    "Accept-Encoding": "identity"
 }
 
-# ===============================
-# フェイルオーバー付き GET
-# ===============================
-def fetch_with_failover(instances, path, params=None):
+# =========================
+# Utility
+# =========================
+def try_instances(path, params=None):
     last_error = None
-    for base in instances:
+    for base in INSTANCES:
         try:
-            url = base.rstrip("/") + path
-            r = requests.get(url, params=params, timeout=10)
-            r.raise_for_status()
-            return r.json(), base
+            r = requests.get(
+                base + path,
+                params=params,
+                headers=HEADERS,
+                timeout=12
+            )
+            if r.status_code == 200:
+                return r.json(), base
         except Exception as e:
             last_error = e
             continue
-    raise HTTPException(
-        status_code=503,
-        detail=f"All Invidious instances failed: {last_error}"
-    )
+    raise HTTPException(503, f"Invidious unavailable: {last_error}")
 
-# ===============================
-# API : 検索
-# ===============================
-@app.get("/api/search")
-def api_search(q: str):
-    data, used = fetch_with_failover(
-        INVIDIOUS["search"],
-        "/api/v1/search",
-        {"q": q, "type": "video"}
-    )
-    return {
-        "results": data,
-        "used_instance": used
-    }
-
-# ===============================
-# API : 動画情報 + 関連
-# ===============================
-@app.get("/api/video")
-def api_video(video_id: str):
-    data, used = fetch_with_failover(
-        INVIDIOUS["video"],
-        f"/api/v1/videos/{video_id}"
-    )
-    return {
-        "title": data.get("title"),
-        "description": data.get("description"),
-        "author": data.get("author"),
-        "viewCount": data.get("viewCount"),
-        "recommended": data.get("recommendedVideos", []),
-        "used_instance": used
-    }
-
-# ===============================
-# API : コメント
-# ===============================
-@app.get("/api/comments")
-def api_comments(video_id: str):
-    data, used = fetch_with_failover(
-        INVIDIOUS["comments"],
-        f"/api/v1/comments/{video_id}"
-    )
-    return data
-
-# ===============================
-# API : ダウンロード（360p / m3u8）
-# ===============================
-@app.get("/api/download")
-def api_download(video_id: str):
-    data, used = fetch_with_failover(
-        INVIDIOUS["video"],
-        f"/api/v1/videos/{video_id}"
-    )
-
-    formats = []
-    for f in data.get("adaptiveFormats", []):
-        if not f.get("url"):
-            continue
-
-        # 360p (itag 18)
-        if f.get("itag") == "18":
-            formats.append({
-                "quality": "360p",
-                "type": "mp4",
-                "url": f["url"]
-            })
-
-        # m3u8
-        if "m3u8" in f.get("type", ""):
-            formats.append({
-                "quality": f.get("qualityLabel", "auto"),
-                "type": "m3u8",
-                "url": f["url"]
-            })
-
-    if not formats:
-        raise HTTPException(status_code=404, detail="No downloadable formats found")
-
-    return {
-        "formats": formats,
-        "used_instance": used
-    }
-
-# ===============================
-# 静的ファイル
-# ===============================
-if not os.path.isdir("statics"):
-    raise RuntimeError("statics directory not found")
-
+# =========================
+# Static
+# =========================
 app.mount("/static", StaticFiles(directory="statics"), name="static")
 
 @app.get("/")
-def index():
+def root():
     return FileResponse("statics/index.html")
 
-@app.get("/watch.html")
-def watch():
-    return FileResponse("statics/watch.html")
+# =========================
+# Search
+# =========================
+@app.get("/api/search")
+def search(q: str):
+    data, used = try_instances(
+        "/api/v1/search",
+        {"q": q, "type": "video"}
+    )
+    return {"results": data, "used": used}
+
+# =========================
+# Video / Related / Channel
+# =========================
+@app.get("/api/video/{vid}")
+def video(vid: str):
+    data, used = try_instances(f"/api/v1/videos/{vid}")
+    return {
+        "video": data,
+        "related": data.get("recommendedVideos", []),
+        "used": used
+    }
+
+# =========================
+# Channel info
+# =========================
+@app.get("/api/channel/{cid}")
+def channel(cid: str):
+    data, used = try_instances(f"/api/v1/channels/{cid}")
+    return data
+
+# =========================
+# Comments
+# =========================
+@app.get("/api/comments/{vid}")
+def comments(vid: str):
+    data, used = try_instances(f"/api/v1/comments/{vid}")
+    return data
+
+# =========================
+# Download (超安定)
+# =========================
+@app.get("/api/download/{vid}")
+def download(vid: str, itag: str):
+    info, _ = try_instances(f"/api/v1/videos/{vid}")
+
+    target = None
+    for f in info.get("formatStreams", []):
+        if f.get("itag") == itag and f.get("url"):
+            target = f
+            break
+
+    if not target:
+        raise HTTPException(404, "format not found")
+
+    def stream():
+        with requests.get(
+            target["url"],
+            headers=HEADERS,
+            stream=True,
+            timeout=15
+        ) as r:
+            r.raise_for_status()
+            for chunk in r.iter_content(1024 * 256):
+                if chunk:
+                    yield chunk
+                    time.sleep(0.001)
+
+    return StreamingResponse(
+        stream(),
+        media_type=target.get("mimeType", "video/mp4"),
+        headers={
+            "Content-Disposition": f'attachment; filename="{vid}.mp4"',
+            "Accept-Ranges": "bytes"
+        }
+    )
