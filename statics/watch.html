@@ -13,6 +13,7 @@ body {
   color: #111;
 }
 
+/* ===== ヘッダー ===== */
 .header {
   background: #ffffff;
   padding: 10px;
@@ -39,6 +40,7 @@ body {
   border-color: #2563eb;
 }
 
+/* ===== 動画 ===== */
 .video-wrap {
   width: 100%;
   background: #000;
@@ -51,6 +53,7 @@ body {
   border: none;
 }
 
+/* ===== セクション ===== */
 .section {
   background: #fff;
   margin: 12px;
@@ -61,12 +64,13 @@ body {
 .title {
   font-size: 18px;
   font-weight: bold;
+  margin-bottom: 6px;
 }
 
 .author {
   font-size: 13px;
   color: #555;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
 }
 
 .desc {
@@ -74,21 +78,23 @@ body {
   white-space: pre-wrap;
 }
 
-.download select,
-.download button {
+/* ===== ストリーム ===== */
+.stream select,
+.stream button {
   width: 100%;
   padding: 10px;
-  margin-top: 6px;
   font-size: 14px;
+  margin-top: 6px;
 }
 
-.download button {
-  background: #16a34a;
+.stream button {
+  background: #0ea5e9;
   color: #fff;
   border: none;
   cursor: pointer;
 }
 
+/* ===== コメント ===== */
 .comment {
   border-top: 1px solid #eee;
   padding: 8px 0;
@@ -98,36 +104,44 @@ body {
   font-weight: bold;
   font-size: 13px;
 }
+
+.comment-body {
+  font-size: 14px;
+}
 </style>
 </head>
 
 <body>
 
+<!-- ===== 再生切替 ===== -->
 <div class="header">
   <button id="btn-nocookie" onclick="setPlayer('nocookie')">nocookie</button>
   <button id="btn-invidious" onclick="setPlayer('invidious')">Invidious</button>
 </div>
 
+<!-- ===== 動画 ===== -->
 <div class="video-wrap">
   <iframe id="player" allowfullscreen></iframe>
 </div>
 
+<!-- ===== 情報 ===== -->
 <div class="section">
   <div id="title" class="title">読み込み中...</div>
   <div id="author" class="author"></div>
   <div id="desc" class="desc"></div>
 
-  <div class="download">
+  <!-- ===== ストリーム ===== -->
+  <div class="stream">
     <select id="quality">
       <option value="360p">360p</option>
       <option value="720p">720p</option>
       <option value="best">最高画質</option>
     </select>
-    <button onclick="download()">⬇ ダウンロード</button>
-    <div id="dlStatus" style="font-size:13px;margin-top:6px;"></div>
+    <button onclick="openStream()">▶ ストリーム再生</button>
   </div>
 </div>
 
+<!-- ===== コメント ===== -->
 <div class="section">
   <h3>コメント</h3>
   <div id="comments">読み込み中...</div>
@@ -139,9 +153,17 @@ const player = document.getElementById("player");
 
 const INVIDIOUS_EMBED = "https://pol1.iv.ggtyler.dev/embed/";
 
+const btnNocookie = document.getElementById("btn-nocookie");
+const btnInvidious = document.getElementById("btn-invidious");
+
+/* ===== プレイヤー切替 ===== */
+function clearActive() {
+  btnNocookie.classList.remove("active");
+  btnInvidious.classList.remove("active");
+}
+
 function setPlayer(type) {
-  document.querySelectorAll(".header button")
-    .forEach(b => b.classList.remove("active"));
+  clearActive();
 
   if (type === "nocookie") {
     player.src = `https://www.youtube-nocookie.com/embed/${videoId}`;
@@ -154,17 +176,18 @@ function setPlayer(type) {
   }
 }
 
-const btnNocookie = document.getElementById("btn-nocookie");
-const btnInvidious = document.getElementById("btn-invidious");
 setPlayer("nocookie");
 
 /* ===== 動画情報 ===== */
 fetch(`/api/video?video_id=${videoId}`)
   .then(r => r.json())
   .then(v => {
-    title.textContent = v.title || "タイトル不明";
-    author.textContent = v.author || "";
-    desc.textContent = v.description || "";
+    document.getElementById("title").textContent = v.title || "タイトル不明";
+    document.getElementById("author").textContent = v.author || "";
+    document.getElementById("desc").textContent = v.description || "";
+  })
+  .catch(() => {
+    document.getElementById("title").textContent = "動画情報取得失敗";
   });
 
 /* ===== コメント ===== */
@@ -184,21 +207,21 @@ fetch(`/api/comments?video_id=${videoId}`)
       div.className = "comment";
       div.innerHTML = `
         <div class="comment-author">${cm.author}</div>
-        <div>${cm.content}</div>
+        <div class="comment-body">${cm.content}</div>
       `;
       c.appendChild(div);
     });
+  })
+  .catch(() => {
+    document.getElementById("comments").textContent = "コメント取得失敗";
   });
 
-/* ===== ダウンロード（修正点） ===== */
-function download() {
+/* ===== streamurl へ遷移 ===== */
+function openStream() {
   const q = document.getElementById("quality").value;
-  document.getElementById("dlStatus").textContent = "ダウンロード開始…";
-
-  // fetchを使わず直接アクセス
-  location.href = `/api/download?video_id=${videoId}&quality=${q}`;
+  location.href = `/api/streamurl?video_id=${videoId}&quality=${q}`;
 }
 </script>
 
 </body>
-</html>
+    </html>
