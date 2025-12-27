@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 import requests
 import random
@@ -7,79 +8,58 @@ import os
 app = FastAPI()
 
 # ===============================
-# Invidious インスタンス（用途別）
+# Invidious インスタンス定義
 # ===============================
-INSTANCES = {
-    "video": [
-        "https://invidious.exma.de",
-        "https://invidious.f5.si",
-        "https://siawaseok-wakame-server2.glitch.me",
-        "https://lekker.gay",
-        "https://id.420129.xyz",
-        "https://invid-api.poketube.fun",
-        "https://eu-proxy.poketube.fun",
-        "https://cal1.iv.ggtyler.dev",
-        "https://pol1.iv.ggtyler.dev"
-    ],
+INVIDIOUS = {
     "search": [
-        "https://pol1.iv.ggtyler.dev",
-        "https://youtube.mosesmang.com",
-        "https://iteroni.com",
-        "https://invidious.0011.lt",
-        "https://iv.melmac.space",
-        "https://rust.oskamp.nl"
+        "https://pol1.iv.ggtyler.dev/",
+        "https://youtube.mosesmang.com/",
+        "https://iteroni.com/",
+        "https://invidious.0011.lt/",
+        "https://iv.melmac.space/",
+        "https://rust.oskamp.nl/"
     ],
-    "channel": [
-        "https://siawaseok-wakame-server2.glitch.me",
-        "https://id.420129.xyz",
-        "https://invidious.0011.lt",
-        "https://invidious.nietzospannend.nl"
-    ],
-    "playlist": [
-        "https://siawaseok-wakame-server2.glitch.me",
-        "https://invidious.0011.lt",
-        "https://invidious.nietzospannend.nl",
-        "https://youtube.mosesmang.com",
-        "https://iv.melmac.space",
-        "https://lekker.gay"
+    "video": [
+        "https://invidious.exma.de/",
+        "https://invidious.f5.si/",
+        "https://siawaseok-wakame-server2.glitch.me/",
+        "https://lekker.gay/",
+        "https://id.420129.xyz/",
+        "https://invid-api.poketube.fun/",
+        "https://eu-proxy.poketube.fun/",
+        "https://cal1.iv.ggtyler.dev/",
+        "https://pol1.iv.ggtyler.dev/"
     ],
     "comments": [
-        "https://siawaseok-wakame-server2.glitch.me",
-        "https://invidious.0011.lt",
-        "https://invidious.nietzospannend.nl"
+        "https://siawaseok-wakame-server2.glitch.me/",
+        "https://invidious.0011.lt/",
+        "https://invidious.nietzospannend.nl/"
     ]
 }
 
 # ===============================
-# 共通リクエスト（フェイルオーバー）
+# フェイルオーバー付き GET
 # ===============================
-def fetch_with_fallback(instances, path, params=None):
-    random.shuffle(instances)
-
+def fetch_with_failover(instances, path, params=None):
+    last_error = None
     for base in instances:
         try:
-            r = requests.get(
-                f"{base}{path}",
-                params=params,
-                timeout=10
-            )
+            url = base.rstrip("/") + path
+            r = requests.get(url, params=params, timeout=10)
             r.raise_for_status()
             return r.json(), base
-        except Exception:
+        except Exception as e:
+            last_error = e
             continue
-
-    raise HTTPException(
-        status_code=502,
-        detail="All Invidious instances failed"
-    )
+    raise HTTPException(status_code=503, detail=f"All Invidious instances failed: {last_error}")
 
 # ===============================
 # API : 検索
 # ===============================
 @app.get("/api/search")
 def api_search(q: str):
-    data, used = fetch_with_fallback(
-        INSTANCES["search"],
+    data, used = fetch_with_failover(
+        INVIDIOUS["search"],
         "/api/v1/search",
         {"q": q, "type": "video"}
     )
@@ -89,27 +69,14 @@ def api_search(q: str):
     }
 
 # ===============================
-# API : トレンド
-# ===============================
-@app.get("/api/trending")
-def api_trending(region: str = "JP"):
-    data, _ = fetch_with_fallback(
-        INSTANCES["search"],
-        "/api/v1/trending",
-        {"region": region}
-    )
-    return data
-
-# ===============================
-# API : 動画情報 + 関連動画
+# API : 動画情報 + 関連
 # ===============================
 @app.get("/api/video")
 def api_video(video_id: str):
-    data, used = fetch_with_fallback(
-        INSTANCES["video"],
+    data, used = fetch_with_failover(
+        INVIDIOUS["video"],
         f"/api/v1/videos/{video_id}"
     )
-
     return {
         "title": data.get("title"),
         "description": data.get("description"),
@@ -124,82 +91,59 @@ def api_video(video_id: str):
 # ===============================
 @app.get("/api/comments")
 def api_comments(video_id: str):
-    data, used = fetch_with_fallback(
-        INSTANCES["comments"],
+    data, used = fetch_with_failover(
+        INVIDIOUS["comments"],
         f"/api/v1/comments/{video_id}"
     )
-    data["used_instance"] = used
     return data
 
 # ===============================
-# API : チャンネル情報
-# ===============================
-@app.get("/api/channel")
-def api_channel(channel_id: str):
-    data, used = fetch_with_fallback(
-        INSTANCES["channel"],
-        f"/api/v1/channels/{channel_id}"
-    )
-    data["used_instance"] = used
-    return data
-
-# ===============================
-# API : プレイリスト
-# ===============================
-@app.get("/api/playlist")
-def api_playlist(list_id: str):
-    data, used = fetch_with_fallback(
-        INSTANCES["playlist"],
-        f"/api/v1/playlists/{list_id}"
-    )
-    data["used_instance"] = used
-    return data
-
-# ===============================
-# API : ダウンロード（360p / m3u8）
+# API : ダウンロード (360p / m3u8)
 # ===============================
 @app.get("/api/download")
 def api_download(video_id: str):
-    data, _ = fetch_with_fallback(
-        INSTANCES["video"],
+    data, used = fetch_with_failover(
+        INVIDIOUS["video"],
         f"/api/v1/videos/{video_id}"
     )
 
     formats = []
-
     for f in data.get("adaptiveFormats", []):
-        url = f.get("url")
-        if not url:
+        if not f.get("url"):
             continue
 
+        # 360p
         if f.get("itag") == "18":
             formats.append({
                 "quality": "360p",
                 "type": "mp4",
-                "url": url
+                "url": f["url"]
             })
 
+        # m3u8
         if "m3u8" in f.get("type", ""):
             formats.append({
                 "quality": f.get("qualityLabel", "auto"),
                 "type": "m3u8",
-                "url": url
+                "url": f["url"]
             })
 
     if not formats:
-        raise HTTPException(404, "No downloadable formats")
+        raise HTTPException(status_code=404, detail="No downloadable formats found")
 
-    return {"formats": formats}
+    return {
+        "formats": formats,
+        "used_instance": used
+    }
 
 # ===============================
 # 静的ファイル
-# / → index.html（307なし）
 # ===============================
 if not os.path.isdir("statics"):
-    raise RuntimeError("Directory 'statics' does not exist")
+    raise RuntimeError("statics directory not found")
 
-app.mount(
-    "/",
-    StaticFiles(directory="statics", html=True),
-    name="static"
-    )
+app.mount("/static", StaticFiles(directory="statics"), name="static")
+
+@app.get("/")
+def index():
+    return FileResponse("statics/index.html")
