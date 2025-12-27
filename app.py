@@ -1,131 +1,168 @@
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import StreamingResponse, FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 import requests
-import random
-import time
+import subprocess
+import os
 
 app = FastAPI()
 
-# =========================
-# Invidious instances
-# =========================
-INSTANCES = [
-    "https://pol1.iv.ggtyler.dev",
-    "https://cal1.iv.ggtyler.dev",
-    "https://iv.melmac.space",
-    "https://invidious.0011.lt",
-    "https://id.420129.xyz"
-]
-
-HEADERS = {
-    "User-Agent": "Mozilla/5.0",
-    "Accept": "*/*",
-    "Accept-Encoding": "identity"
+# ===============================
+# Invidious インスタンス定義（安定重視）
+# ===============================
+INVIDIOUS = {
+    "search": [
+        "https://pol1.iv.ggtyler.dev",
+        "https://iv.melmac.space",
+        "https://invidious.0011.lt",
+        "https://iteroni.com"
+    ],
+    "video": [
+        "https://pol1.iv.ggtyler.dev",
+        "https://cal1.iv.ggtyler.dev",
+        "https://invidious.exma.de",
+        "https://lekker.gay"
+    ],
+    "comments": [
+        "https://invidious.0011.lt",
+        "https://invidious.nietzospannend.nl"
+    ]
 }
 
-# =========================
-# Utility
-# =========================
-def try_instances(path, params=None):
+# ===============================
+# フェイルオーバー付き GET
+# ===============================
+def fetch_with_failover(instances, path, params=None):
     last_error = None
-    for base in INSTANCES:
+    for base in instances:
         try:
+            url = base.rstrip("/") + path
             r = requests.get(
-                base + path,
+                url,
                 params=params,
-                headers=HEADERS,
-                timeout=12
+                timeout=6,
+                headers={"User-Agent": "Mozilla/5.0"}
             )
-            if r.status_code == 200:
-                return r.json(), base
+            if r.status_code != 200:
+                last_error = f"{base} HTTP {r.status_code}"
+                continue
+            return r.json(), base
         except Exception as e:
-            last_error = e
+            last_error = str(e)
             continue
-    raise HTTPException(503, f"Invidious unavailable: {last_error}")
 
-# =========================
-# Static
-# =========================
-app.mount("/static", StaticFiles(directory="statics"), name="static")
+    raise HTTPException(
+        status_code=503,
+        detail="Invidious unavailable (all instances failed)"
+    )
 
-@app.get("/")
-def root():
-    return FileResponse("statics/index.html")
-
-# =========================
-# Search
-# =========================
+# ===============================
+# API : 検索
+# ===============================
 @app.get("/api/search")
-def search(q: str):
-    data, used = try_instances(
+def api_search(q: str):
+    data, used = fetch_with_failover(
+        INVIDIOUS["search"],
         "/api/v1/search",
         {"q": q, "type": "video"}
     )
-    return {"results": data, "used": used}
+    return {
+        "results": data,
+        "used_instance": used
+    }
 
-# =========================
-# Video / Related / Channel
-# =========================
-@app.get("/api/video/{vid}")
-def video(vid: str):
-    data, used = try_instances(f"/api/v1/videos/{vid}")
+# ===============================
+# API : 動画情報 + 関連動画
+# ===============================
+@app.get("/api/video/{video_id}")
+def api_video(video_id: str):
+    data, used = fetch_with_failover(
+        INVIDIOUS["video"],
+        f"/api/v1/videos/{video_id}"
+    )
     return {
         "video": data,
         "related": data.get("recommendedVideos", []),
-        "used": used
+        "used_instance": used
     }
 
-# =========================
-# Channel info
-# =========================
-@app.get("/api/channel/{cid}")
-def channel(cid: str):
-    data, used = try_instances(f"/api/v1/channels/{cid}")
+# ===============================
+# API : コメント
+# ===============================
+@app.get("/api/comments/{video_id}")
+def api_comments(video_id: str):
+    data, used = fetch_with_failover(
+        INVIDIOUS["comments"],
+        f"/api/v1/comments/{video_id}"
+    )
     return data
 
-# =========================
-# Comments
-# =========================
-@app.get("/api/comments/{vid}")
-def comments(vid: str):
-    data, used = try_instances(f"/api/v1/comments/{vid}")
-    return data
+# ===============================
+# API : Invidious ダウンロード（補助）
+# ===============================
+@app.get("/api/download/{video_id}")
+def api_download(video_id: str, itag: str):
+    data, used = fetch_with_failover(
+        INVIDIOUS["video"],
+        f"/api/v1/videos/{video_id}"
+    )
 
-# =========================
-# Download (超安定)
-# =========================
-@app.get("/api/download/{vid}")
-def download(vid: str, itag: str):
-    info, _ = try_instances(f"/api/v1/videos/{vid}")
-
-    target = None
-    for f in info.get("formatStreams", []):
+    for f in data.get("adaptiveFormats", []):
         if f.get("itag") == itag and f.get("url"):
-            target = f
-            break
+            return {
+                "url": f["url"],
+                "used_instance": used
+            }
 
-    if not target:
-        raise HTTPException(404, "format not found")
+    raise HTTPException(status_code=404, detail="Format not found")
 
-    def stream():
-        with requests.get(
-            target["url"],
-            headers=HEADERS,
-            stream=True,
-            timeout=15
-        ) as r:
-            r.raise_for_status()
-            for chunk in r.iter_content(1024 * 256):
-                if chunk:
-                    yield chunk
-                    time.sleep(0.001)
+# ===============================
+# API : yt-dlp プロキシ（最終手段・超安定）
+# ===============================
+@app.get("/api/dlp/{video_id}")
+def dlp_proxy(video_id: str, itag: str = "18"):
+    if itag == "18":
+        fmt = "best[height<=360]/best"
+    elif itag == "22":
+        fmt = "best[height<=720]/best"
+    else:
+        fmt = "best"
+
+    cmd = [
+        "yt-dlp",
+        "-f", fmt,
+        "-o", "-",
+        f"https://www.youtube.com/watch?v={video_id}"
+    ]
+
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL
+        )
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=500,
+            detail="yt-dlp is not installed"
+        )
 
     return StreamingResponse(
-        stream(),
-        media_type=target.get("mimeType", "video/mp4"),
-        headers={
-            "Content-Disposition": f'attachment; filename="{vid}.mp4"',
-            "Accept-Ranges": "bytes"
-        }
+        proc.stdout,
+        media_type="video/mp4"
     )
+
+# ===============================
+# 静的ファイル
+# ===============================
+if not os.path.isdir("statics"):
+    raise RuntimeError("statics directory not found")
+
+app.mount("/static", StaticFiles(directory="statics"), name="static")
+
+# ===============================
+# ルート
+# ===============================
+@app.get("/")
+def root():
+    return FileResponse("statics/index.html")
