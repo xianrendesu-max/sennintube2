@@ -52,11 +52,18 @@ button {
   border-radius: 8px;
   padding: 10px;
   box-shadow: 0 2px 6px rgba(0,0,0,.1);
+  cursor: pointer;
+}
+
+.thumb {
+  width: 100%;
+  border-radius: 6px;
 }
 
 .title {
   font-size: 14px;
   font-weight: bold;
+  margin-top: 6px;
 }
 
 .author {
@@ -89,14 +96,39 @@ async function search() {
   status.textContent = "検索中…";
 
   try {
-    status.textContent = "検索中… 切替中…";
     const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
-
     if (!res.ok) {
-      status.textContent = "現在検索できません";
+      status.textContent = "検索失敗";
       return;
     }
 
     const data = await res.json();
+    const results = data.results || [];
+
     status.textContent =
-      `検索結果 ${data.count}件 / 使用API: ${data
+      `検索結果 ${results.length}件 / 使用API: ${data.source}`;
+
+    for (const v of results) {
+      const card = document.createElement("div");
+      card.className = "card";
+      card.onclick = () => {
+        location.href = `/static/watch.html?vid=${v.videoId}`;
+      };
+
+      card.innerHTML = `
+        <img class="thumb" src="https://i.ytimg.com/vi/${v.videoId}/hqdefault.jpg">
+        <div class="title">${v.title || ""}</div>
+        <div class="author">${v.author || ""}</div>
+      `;
+      grid.appendChild(card);
+    }
+
+  } catch (e) {
+    status.textContent = "通信エラー";
+    console.error(e);
+  }
+}
+</script>
+
+</body>
+</html>
