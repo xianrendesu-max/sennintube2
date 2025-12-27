@@ -90,7 +90,8 @@ button {
 <body>
 
 <header>
-  <input id="q" placeholder="動画を検索" onkeydown="if(event.key==='Enter')search()">
+  <input id="q" placeholder="動画を検索"
+    onkeydown="if(event.key==='Enter')search()">
   <button onclick="search()">検索</button>
 </header>
 
@@ -113,17 +114,19 @@ async function search() {
     const data = await res.json();
 
     status.textContent =
-      `検索結果: ${data.results.length}件 / 使用中: ${data.used_instance}`;
+      `検索結果：${data.results.length}件（${data.used_instance}）`;
 
     data.results.forEach(v => {
       const card = document.createElement("div");
       card.className = "card";
       card.onclick = () => {
-        location.href = `watch.html?v=${v.videoId}`;
+        location.href = `/static/watch.html?v=${v.videoId}`;
       };
 
       card.innerHTML = `
-        <img class="thumb" src="https://i.ytimg.com/vi/${v.videoId}/hqdefault.jpg">
+        <img class="thumb"
+          src="https://i.ytimg.com/vi/${v.videoId}/hqdefault.jpg"
+          loading="lazy">
         <div class="card-body">
           <div class="title">${v.title}</div>
           <div class="author">${v.author}</div>
