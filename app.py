@@ -2,7 +2,6 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 import requests
-import random
 import os
 
 app = FastAPI()
@@ -51,7 +50,10 @@ def fetch_with_failover(instances, path, params=None):
         except Exception as e:
             last_error = e
             continue
-    raise HTTPException(status_code=503, detail=f"All Invidious instances failed: {last_error}")
+    raise HTTPException(
+        status_code=503,
+        detail=f"All Invidious instances failed: {last_error}"
+    )
 
 # ===============================
 # API : 検索
@@ -98,7 +100,7 @@ def api_comments(video_id: str):
     return data
 
 # ===============================
-# API : ダウンロード (360p / m3u8)
+# API : ダウンロード（360p / m3u8）
 # ===============================
 @app.get("/api/download")
 def api_download(video_id: str):
@@ -112,7 +114,7 @@ def api_download(video_id: str):
         if not f.get("url"):
             continue
 
-        # 360p
+        # 360p (itag 18)
         if f.get("itag") == "18":
             formats.append({
                 "quality": "360p",
@@ -147,3 +149,7 @@ app.mount("/static", StaticFiles(directory="statics"), name="static")
 @app.get("/")
 def index():
     return FileResponse("statics/index.html")
+
+@app.get("/watch.html")
+def watch():
+    return FileResponse("statics/watch.html")
