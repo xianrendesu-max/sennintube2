@@ -2,143 +2,191 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<title>動画再生</title>
+<title>仙人YouTubeビュアー</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 
 <style>
 body {
   margin: 0;
   font-family: system-ui, sans-serif;
-  background: #f9fafb;
+  background: #f5f6f8;
+  color: #111;
 }
 
-header {
-  padding: 12px;
-  background: #ffffff;
-  box-shadow: 0 2px 6px rgba(0,0,0,.1);
+/* ===== レイアウト ===== */
+.container {
+  max-width: 960px;
+  margin: auto;
+  padding: 16px;
 }
 
-iframe {
+/* ===== 動画（16:9固定） ===== */
+.video-wrap {
+  position: relative;
   width: 100%;
-  height: 240px;
+  aspect-ratio: 16 / 9;
+  background: #000;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.video-wrap iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   border: none;
 }
 
-.section {
-  background: #fff;
-  margin: 12px;
-  padding: 12px;
-  border-radius: 8px;
+/* ===== 情報 ===== */
+h1 {
+  font-size: 20px;
+  margin: 12px 0 4px;
+}
+
+.author {
+  font-size: 14px;
+  color: #555;
+}
+
+/* ===== ボタン ===== */
+.buttons {
+  display: flex;
+  gap: 8px;
+  margin: 12px 0;
 }
 
 button {
-  padding: 10px;
-  border: none;
+  padding: 10px 14px;
+  border: 1px solid #ccc;
+  background: #fff;
+  cursor: pointer;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+button.primary {
   background: #2563eb;
   color: #fff;
-  border-radius: 6px;
-  cursor: pointer;
+  border: none;
 }
 
-button:disabled {
-  background: #9ca3af;
-}
-
-#loader {
+/* ===== DLアニメーション ===== */
+#loading {
   display: none;
-  margin-top: 10px;
+  margin-top: 8px;
+  font-size: 13px;
+  color: #555;
+}
+
+/* ===== コメント ===== */
+.comments {
+  margin-top: 24px;
+}
+
+.comment {
+  background: #fff;
+  padding: 10px;
+  border-radius: 8px;
+  margin-bottom: 8px;
+}
+
+.comment-author {
+  font-size: 13px;
+  font-weight: bold;
+}
+.comment-text {
+  font-size: 14px;
 }
 </style>
 </head>
 
 <body>
 
-<header>
-  <iframe id="player"></iframe>
-</header>
+<div class="container">
 
-<div class="section">
-  <h2 id="title">読み込み中...</h2>
-  <p id="desc"></p>
+  <!-- 動画 -->
+  <div class="video-wrap">
+    <iframe id="player" allowfullscreen></iframe>
+  </div>
 
-  <button id="dlBtn" onclick="download()">⬇ ダウンロード（360p）</button>
-  <div id="loader">⏳ ダウンロードURL取得中...</div>
-</div>
+  <!-- 情報 -->
+  <h1 id="title">読み込み中...</h1>
+  <div class="author" id="author"></div>
 
-<div class="section">
-  <h3>コメント</h3>
-  <div id="comments">読み込み中...</div>
+  <!-- ボタン -->
+  <div class="buttons">
+    <button onclick="setMode('invidious')">Invidious</button>
+    <button onclick="setMode('nocookie')">NoCookie</button>
+    <button class="primary" onclick="download()">⬇ ダウンロード</button>
+  </div>
+
+  <div id="loading">ダウンロードURL取得中...</div>
+
+  <!-- コメント -->
+  <div class="comments" id="comments"></div>
+
 </div>
 
 <script>
-const videoId = new URLSearchParams(location.search).get("v");
+const params = new URLSearchParams(location.search);
+const videoId = params.get("v");
+
+let mode = "invidious";
+
 const player = document.getElementById("player");
 
-player.src = `https://www.youtube-nocookie.com/embed/${videoId}`;
+function setMode(m) {
+  mode = m;
+  loadPlayer();
+}
 
-/* ===============================
-   動画情報
-=============================== */
+function loadPlayer() {
+  if (mode === "nocookie") {
+    player.src = `https://www.youtube-nocookie.com/embed/${videoId}`;
+  } else {
+    player.src = `https://invidious.0011.lt/embed/${videoId}`;
+  }
+}
+
+/* ===== 動画情報 ===== */
 fetch(`/api/video?video_id=${videoId}`)
   .then(r => r.json())
   .then(d => {
-    document.getElementById("title").textContent =
-      d.video?.title || "取得失敗";
-    document.getElementById("desc").textContent =
-      d.video?.description || "";
-  })
-  .catch(e => {
-    document.getElementById("title").textContent = "動画情報取得失敗";
+    document.getElementById("title").textContent = d.video.title;
+    document.getElementById("author").textContent = d.video.author;
   });
 
-/* ===============================
-   コメント
-=============================== */
+/* ===== コメント ===== */
 fetch(`/api/comments?video_id=${videoId}`)
   .then(r => r.json())
   .then(d => {
     const box = document.getElementById("comments");
-    box.innerHTML = "";
-
-    if (!d.comments || d.comments.length === 0) {
-      box.textContent = "コメントなし";
-      return;
-    }
-
     d.comments.forEach(c => {
       const div = document.createElement("div");
-      div.textContent = `${c.author}: ${c.content}`;
+      div.className = "comment";
+      div.innerHTML = `
+        <div class="comment-author">${c.author}</div>
+        <div class="comment-text">${c.content}</div>
+      `;
       box.appendChild(div);
     });
-  })
-  .catch(() => {
-    document.getElementById("comments").textContent = "コメント取得失敗";
   });
 
-/* ===============================
-   ダウンロード
-=============================== */
+/* ===== ダウンロード（重要） ===== */
 function download() {
-  const btn = document.getElementById("dlBtn");
-  const loader = document.getElementById("loader");
+  document.getElementById("loading").style.display = "block";
 
-  btn.disabled = true;
-  loader.style.display = "block";
+  // ★ fetchしない！直接遷移！
+  window.location.href = `/api/download?video_id=${videoId}`;
 
-  fetch(`/api/download?video_id=${videoId}`)
-    .then(r => r.json())
-    .then(d => {
-      window.open(d.url, "_blank");
-    })
-    .catch(() => {
-      alert("ダウンロード失敗");
-    })
-    .finally(() => {
-      btn.disabled = false;
-      loader.style.display = "none";
-    });
+  setTimeout(() => {
+    document.getElementById("loading").style.display = "none";
+  }, 4000);
 }
+
+loadPlayer();
 </script>
 
 </body>
-</html>
+    </html>
