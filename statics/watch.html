@@ -9,93 +9,112 @@
 body {
   margin: 0;
   font-family: system-ui, sans-serif;
-  background: #f5f6f8;
+  background: #f3f4f6;
   color: #111;
 }
 
-/* ===== レイアウト ===== */
-.container {
-  max-width: 960px;
-  margin: auto;
-  padding: 16px;
+/* ===== ヘッダー ===== */
+.header {
+  background: #ffffff;
+  padding: 10px;
+  display: flex;
+  gap: 8px;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  border-bottom: 1px solid #ddd;
 }
 
-/* ===== 動画（16:9固定） ===== */
+.header button {
+  flex: 1;
+  padding: 10px;
+  border: 1px solid #ccc;
+  background: #fff;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.header button.active {
+  background: #2563eb;
+  color: #fff;
+  border-color: #2563eb;
+}
+
+/* ===== 動画 ===== */
 .video-wrap {
-  position: relative;
   width: 100%;
-  aspect-ratio: 16 / 9;
   background: #000;
-  border-radius: 12px;
-  overflow: hidden;
+  aspect-ratio: 16 / 9;
 }
 
 .video-wrap iframe {
-  position: absolute;
-  inset: 0;
   width: 100%;
   height: 100%;
   border: none;
 }
 
-/* ===== 情報 ===== */
-h1 {
-  font-size: 20px;
-  margin: 12px 0 4px;
+/* ===== セクション ===== */
+.section {
+  background: #fff;
+  margin: 12px;
+  padding: 12px;
+  border-radius: 8px;
+}
+
+.title {
+  font-size: 18px;
+  font-weight: bold;
+  margin-bottom: 6px;
 }
 
 .author {
-  font-size: 14px;
-  color: #555;
-}
-
-/* ===== ボタン ===== */
-.buttons {
-  display: flex;
-  gap: 8px;
-  margin: 12px 0;
-}
-
-button {
-  padding: 10px 14px;
-  border: 1px solid #ccc;
-  background: #fff;
-  cursor: pointer;
-  border-radius: 6px;
-  font-size: 14px;
-}
-
-button.primary {
-  background: #2563eb;
-  color: #fff;
-  border: none;
-}
-
-/* ===== DLアニメーション ===== */
-#loading {
-  display: none;
-  margin-top: 8px;
   font-size: 13px;
   color: #555;
+  margin-bottom: 10px;
+}
+
+.desc {
+  font-size: 14px;
+  white-space: pre-wrap;
+}
+
+/* ===== ダウンロード ===== */
+.download {
+  margin-top: 10px;
+}
+
+.download select,
+.download button {
+  width: 100%;
+  padding: 10px;
+  font-size: 14px;
+  margin-top: 6px;
+  border: 1px solid #ccc;
+  background: #fff;
+}
+
+.download button {
+  background: #16a34a;
+  color: #fff;
+  cursor: pointer;
+}
+
+.download button:disabled {
+  background: #9ca3af;
 }
 
 /* ===== コメント ===== */
-.comments {
-  margin-top: 24px;
-}
-
 .comment {
-  background: #fff;
-  padding: 10px;
-  border-radius: 8px;
-  margin-bottom: 8px;
+  border-top: 1px solid #eee;
+  padding: 8px 0;
 }
 
 .comment-author {
-  font-size: 13px;
   font-weight: bold;
+  font-size: 13px;
 }
-.comment-text {
+
+.comment-body {
   font-size: 14px;
 }
 </style>
@@ -103,89 +122,128 @@ button.primary {
 
 <body>
 
-<div class="container">
+<!-- ===== 再生切替 ===== -->
+<div class="header">
+  <button id="btn-nocookie" onclick="setPlayer('nocookie')">nocookie</button>
+  <button id="btn-invidious" onclick="setPlayer('invidious')">Invidious</button>
+</div>
 
-  <!-- 動画 -->
-  <div class="video-wrap">
-    <iframe id="player" allowfullscreen></iframe>
+<!-- ===== 動画 ===== -->
+<div class="video-wrap">
+  <iframe id="player" allowfullscreen></iframe>
+</div>
+
+<!-- ===== 情報 ===== -->
+<div class="section">
+  <div id="title" class="title">読み込み中...</div>
+  <div id="author" class="author"></div>
+  <div id="desc" class="desc"></div>
+
+  <!-- ===== ダウンロード ===== -->
+  <div class="download">
+    <select id="quality">
+      <option value="360p">360p</option>
+      <option value="720p">720p</option>
+      <option value="best">最高画質</option>
+    </select>
+    <button id="dlBtn" onclick="download()">⬇ ダウンロード</button>
+    <div id="dlStatus" style="font-size:13px;margin-top:6px;"></div>
   </div>
+</div>
 
-  <!-- 情報 -->
-  <h1 id="title">読み込み中...</h1>
-  <div class="author" id="author"></div>
-
-  <!-- ボタン -->
-  <div class="buttons">
-    <button onclick="setMode('invidious')">Invidious</button>
-    <button onclick="setMode('nocookie')">NoCookie</button>
-    <button class="primary" onclick="download()">⬇ ダウンロード</button>
-  </div>
-
-  <div id="loading">ダウンロードURL取得中...</div>
-
-  <!-- コメント -->
-  <div class="comments" id="comments"></div>
-
+<!-- ===== コメント ===== -->
+<div class="section">
+  <h3>コメント</h3>
+  <div id="comments">読み込み中...</div>
 </div>
 
 <script>
-const params = new URLSearchParams(location.search);
-const videoId = params.get("v");
-
-let mode = "invidious";
-
+const videoId = new URLSearchParams(location.search).get("v");
 const player = document.getElementById("player");
 
-function setMode(m) {
-  mode = m;
-  loadPlayer();
+const INVIDIOUS_EMBED = "https://pol1.iv.ggtyler.dev/embed/";
+
+function clearActive() {
+  document.querySelectorAll(".header button")
+    .forEach(b => b.classList.remove("active"));
 }
 
-function loadPlayer() {
-  if (mode === "nocookie") {
+function setPlayer(type) {
+  clearActive();
+
+  if (type === "nocookie") {
     player.src = `https://www.youtube-nocookie.com/embed/${videoId}`;
-  } else {
-    player.src = `https://invidious.0011.lt/embed/${videoId}`;
+    document.getElementById("btn-nocookie").classList.add("active");
+  }
+
+  if (type === "invidious") {
+    player.src = `${INVIDIOUS_EMBED}${videoId}`;
+    document.getElementById("btn-invidious").classList.add("active");
   }
 }
+
+setPlayer("nocookie");
 
 /* ===== 動画情報 ===== */
 fetch(`/api/video?video_id=${videoId}`)
   .then(r => r.json())
-  .then(d => {
-    document.getElementById("title").textContent = d.video.title;
-    document.getElementById("author").textContent = d.video.author;
+  .then(v => {
+    document.getElementById("title").textContent = v.title || "タイトル不明";
+    document.getElementById("author").textContent = v.author || "";
+    document.getElementById("desc").textContent = v.description || "";
+  })
+  .catch(() => {
+    document.getElementById("title").textContent = "動画情報取得失敗";
   });
 
 /* ===== コメント ===== */
 fetch(`/api/comments?video_id=${videoId}`)
   .then(r => r.json())
   .then(d => {
-    const box = document.getElementById("comments");
-    d.comments.forEach(c => {
+    const c = document.getElementById("comments");
+    c.innerHTML = "";
+
+    if (!d.comments || d.comments.length === 0) {
+      c.textContent = "コメントはありません";
+      return;
+    }
+
+    d.comments.forEach(cm => {
       const div = document.createElement("div");
       div.className = "comment";
       div.innerHTML = `
-        <div class="comment-author">${c.author}</div>
-        <div class="comment-text">${c.content}</div>
+        <div class="comment-author">${cm.author}</div>
+        <div class="comment-body">${cm.content}</div>
       `;
-      box.appendChild(div);
+      c.appendChild(div);
     });
+  })
+  .catch(() => {
+    document.getElementById("comments").textContent = "コメント取得失敗";
   });
 
-/* ===== ダウンロード（重要） ===== */
+/* ===== ダウンロード ===== */
 function download() {
-  document.getElementById("loading").style.display = "block";
+  const q = document.getElementById("quality").value;
+  const btn = document.getElementById("dlBtn");
+  const st = document.getElementById("dlStatus");
 
-  // ★ fetchしない！直接遷移！
-  window.location.href = `/api/download?video_id=${videoId}`;
+  btn.disabled = true;
+  st.textContent = "ダウンロードURL取得中...";
 
-  setTimeout(() => {
-    document.getElementById("loading").style.display = "none";
-  }, 4000);
+  fetch(`/api/download?video_id=${videoId}&quality=${q}`)
+    .then(r => {
+      if (r.redirected) {
+        location.href = r.url;
+      } else {
+        return r.text();
+      }
+    })
+    .catch(() => {
+      st.textContent = "ダウンロード不可";
+      btn.disabled = false;
+    });
 }
-
-loadPlayer();
 </script>
 
 </body>
