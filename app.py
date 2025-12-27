@@ -1,5 +1,5 @@
 from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import FileResponse, RedirectResponse, JSONResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 import requests
 import random
@@ -11,7 +11,7 @@ app = FastAPI()
 # Static
 # ===============================
 if not os.path.isdir("statics"):
-    os.makedirs("statics")
+    raise RuntimeError("statics directory not found")
 
 app.mount("/static", StaticFiles(directory="statics"), name="static")
 
@@ -27,9 +27,18 @@ VIDEO_APIS = [
     "https://pol1.iv.ggtyler.dev",
     "https://cal1.iv.ggtyler.dev",
     "https://invidious.0011.lt",
+    "https://yt.omada.cafe",
 ]
 
-PLAYLIST_APIS = [
+SEARCH_APIS = [
+    "https://pol1.iv.ggtyler.dev",
+    "https://cal1.iv.ggtyler.dev",
+    "https://iv.melmac.space",
+    "https://invidious.0011.lt",
+    "https://yt.omada.cafe",
+]
+
+CHANNEL_APIS = [
     "https://invidious.lunivers.trade",
     "https://invidious.ducks.party",
     "https://super8.absturztau.be",
@@ -39,13 +48,8 @@ PLAYLIST_APIS = [
     "https://iv.duti.dev",
 ]
 
-SEARCH_APIS = [
-    "https://api-five-zeta-55.vercel.app",
-]
-
-CHANNEL_APIS = [
+PLAYLIST_APIS = [
     "https://invidious.lunivers.trade",
-    "https://invid-api.poketube.fun",
     "https://invidious.ducks.party",
     "https://super8.absturztau.be",
     "https://invidious.nikkosphere.com",
@@ -69,15 +73,18 @@ EDU_VIDEO_API_BASE_URL  = "https://siawaseok.duckdns.org/api/video2/"
 STREAM_YTDL_API_BASE_URL = "https://yudlp.vercel.app/stream/"
 SHORT_STREAM_API_BASE_URL = "https://yt-dl-kappa.vercel.app/short/"
 
-TIMEOUT = 7
-UA = {"User-Agent": "Mozilla/5.0"}
+TIMEOUT = 6
+
+HEADERS = {
+    "User-Agent": "Mozilla/5.0"
+}
 
 # ===============================
 # Utils
 # ===============================
 def try_json(url, params=None):
     try:
-        r = requests.get(url, params=params, timeout=TIMEOUT, headers=UA)
+        r = requests.get(url, params=params, headers=HEADERS, timeout=TIMEOUT)
         if r.status_code == 200:
             return r.json()
     except:
@@ -85,158 +92,157 @@ def try_json(url, params=None):
     return None
 
 # ===============================
-# Search（総当たり）
+# Search（総当たり＋正規化）
 # ===============================
 @app.get("/api/search")
-def api_search(q: str = Query(...)):
-    apis = SEARCH_APIS[:]
-    random.shuffle(apis)
+def api_search(q: str):
+    results = []
 
-    for base in apis:
-        data = try_json(f"{base}/api/search", {"q": q})
-        if data:
+    random.shuffle(SEARCH_APIS)
+    for base in SEARCH_APIS:
+        data = try_json(
+            f"{base}/api/v1/search",
+            {"q": q, "type": "video"}
+        )
+        if not isinstance(data, list):
+            continue
+
+        for v in data:
+            if not v.get("videoId"):
+                continue
+            results.append({
+                "videoId": v["videoId"],
+                "title": v.get("title"),
+                "author": v.get("author"),
+            })
+
+        if results:
             return {
-                "results": data,
+                "results": results,
                 "source": base
             }
 
-    raise HTTPException(503, "Search unavailable (all APIs failed)")
+    # 補助API
+    data = try_json("https://api-five-zeta-55.vercel.app/api/search", {"q": q})
+    if data:
+        for v in data.get("videos", []):
+            results.append({
+                "videoId": v.get("id"),
+                "title": v.get("title"),
+                "author": v.get("author"),
+            })
+
+        if results:
+            return {
+                "results": results,
+                "source": "api-five-zeta-55"
+            }
+
+    raise HTTPException(503, "Search unavailable (all instances failed)")
 
 # ===============================
 # Video Info（総当たり）
 # ===============================
 @app.get("/api/video")
-def api_video(video_id: str = Query(...)):
-    apis = VIDEO_APIS[:]
-    random.shuffle(apis)
+def api_video(video_id: str):
+    random.shuffle(VIDEO_APIS)
 
-    for base in apis:
+    for base in VIDEO_APIS:
         data = try_json(f"{base}/api/v1/videos/{video_id}")
-        if not data:
-            continue
+        if data:
+            return {
+                "title": data.get("title"),
+                "author": data.get("author"),
+                "description": data.get("description"),
+                "viewCount": data.get("viewCount"),
+                "lengthSeconds": data.get("lengthSeconds"),
+                "source": base
+            }
 
-        formats = []
-        for f in data.get("adaptiveFormats", []):
-            if f.get("qualityLabel"):
-                formats.append({
-                    "quality": f.get("qualityLabel")
-                })
-
-        return {
-            "title": data.get("title"),
-            "author": data.get("author"),
-            "description": data.get("description"),
-            "viewCount": data.get("viewCount"),
-            "lengthSeconds": data.get("lengthSeconds"),
-            "formats": formats or [{"quality": "auto"}],
-            "source": base,
-            "downloadable": True
-        }
-
-    # EDU fallback
     edu = try_json(f"{EDU_VIDEO_API_BASE_URL}{video_id}")
     if edu:
         return {
             "title": edu.get("title"),
             "author": edu.get("author"),
             "description": edu.get("description"),
-            "formats": edu.get("formats", [{"quality": "auto"}]),
-            "source": "edu",
-            "downloadable": True
+            "viewCount": edu.get("viewCount"),
+            "lengthSeconds": edu.get("lengthSeconds"),
+            "source": "edu"
         }
 
-    raise HTTPException(503, "Video info unavailable (all sources failed)")
+    raise HTTPException(503, "Video info unavailable")
 
 # ===============================
 # Comments（総当たり）
 # ===============================
 @app.get("/api/comments")
-def api_comments(video_id: str = Query(...)):
-    apis = COMMENTS_APIS[:]
-    random.shuffle(apis)
-
-    for base in apis:
+def api_comments(video_id: str):
+    for base in COMMENTS_APIS:
         data = try_json(f"{base}/api/v1/comments/{video_id}")
-        if not data:
-            continue
-
-        return {
-            "comments": [
-                {
-                    "author": c.get("author"),
-                    "content": c.get("content")
-                }
-                for c in data.get("comments", [])
-            ],
-            "source": base
-        }
-
+        if data:
+            return {
+                "comments": [
+                    {
+                        "author": c.get("author"),
+                        "content": c.get("content")
+                    }
+                    for c in data.get("comments", [])
+                ],
+                "source": base
+            }
     return {"comments": [], "source": None}
 
 # ===============================
-# Channel（総当たり）
+# Channel
 # ===============================
 @app.get("/api/channel")
-def api_channel(channel_id: str = Query(...)):
-    apis = CHANNEL_APIS[:]
-    random.shuffle(apis)
-
-    for base in apis:
+def api_channel(channel_id: str):
+    for base in CHANNEL_APIS:
         data = try_json(f"{base}/api/v1/channels/{channel_id}")
         if data:
             return data
-
     raise HTTPException(503, "Channel unavailable")
 
 # ===============================
-# Playlist（総当たり）
+# Playlist
 # ===============================
 @app.get("/api/playlist")
-def api_playlist(playlist_id: str = Query(...)):
-    apis = PLAYLIST_APIS[:]
-    random.shuffle(apis)
-
-    for base in apis:
+def api_playlist(playlist_id: str):
+    for base in PLAYLIST_APIS:
         data = try_json(f"{base}/api/v1/playlists/{playlist_id}")
         if data:
             return data
-
     raise HTTPException(503, "Playlist unavailable")
 
 # ===============================
-# Download / Stream（完全総当たり）
+# Download / Stream（総当たり）
 # ===============================
 @app.get("/api/download")
 def api_download(video_id: str, quality: str = "best"):
-    stream_apis = [
+    # EDU / yt-dlp proxy
+    for base in [
         EDU_STREAM_API_BASE_URL,
         STREAM_YTDL_API_BASE_URL,
-        SHORT_STREAM_API_BASE_URL,
-    ]
-    random.shuffle(stream_apis)
-
-    # 外部ストリームAPI
-    for base in stream_apis:
+        SHORT_STREAM_API_BASE_URL
+    ]:
         data = try_json(f"{base}{video_id}", {"quality": quality})
         if data and data.get("url"):
             return RedirectResponse(data["url"])
 
-    # Invidious 直URL
-    apis = VIDEO_APIS[:]
-    random.shuffle(apis)
-
-    for base in apis:
+    # Invidious adaptiveFormats
+    for base in VIDEO_APIS:
         data = try_json(f"{base}/api/v1/videos/{video_id}")
         if not data:
             continue
 
         for f in data.get("adaptiveFormats", []):
-            q = f.get("qualityLabel", "")
-            if quality == "best" or quality in q:
-                if f.get("url"):
-                    return RedirectResponse(f["url"])
+            if not f.get("url"):
+                continue
+            label = f.get("qualityLabel") or ""
+            if quality == "best" or quality in label:
+                return RedirectResponse(f["url"])
 
     raise HTTPException(
         503,
         "Download unavailable (all Invidious / EDU / yt-dlp failed)"
-)
+            )
