@@ -8,38 +8,46 @@
 <style>
 body {
   margin: 0;
-  font-family: system-ui, sans-serif;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   background: #f5f6f8;
+  color: #111;
 }
 
+/* ===== ヘッダー ===== */
 header {
   background: #ffffff;
   padding: 12px;
   display: flex;
   gap: 8px;
   box-shadow: 0 2px 8px rgba(0,0,0,.1);
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
 
-input {
+header input {
   flex: 1;
   padding: 10px;
   font-size: 16px;
 }
 
-button {
+header button {
   padding: 10px 16px;
-  background: #1976d2;
+  background: #2563eb;
   color: #fff;
   border: none;
   cursor: pointer;
+  font-size: 15px;
 }
 
+/* ===== ステータス ===== */
 #status {
   padding: 10px 16px;
   font-size: 14px;
   color: #444;
 }
 
+/* ===== グリッド ===== */
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
@@ -47,17 +55,24 @@ button {
   padding: 16px;
 }
 
+/* ===== カード ===== */
 .card {
-  background: #fff;
+  background: #ffffff;
   border-radius: 8px;
   padding: 10px;
   box-shadow: 0 2px 6px rgba(0,0,0,.1);
   cursor: pointer;
+  transition: transform .1s ease;
+}
+
+.card:hover {
+  transform: scale(1.02);
 }
 
 .thumb {
   width: 100%;
   border-radius: 6px;
+  background: #000;
 }
 
 .title {
@@ -75,13 +90,20 @@ button {
 
 <body>
 
+<!-- ===== 検索ヘッダー ===== -->
 <header>
-  <input id="q" placeholder="動画を検索"
-    onkeydown="if(event.key==='Enter')search()">
+  <input
+    id="q"
+    placeholder="動画を検索"
+    onkeydown="if(event.key==='Enter') search()"
+  >
   <button onclick="search()">検索</button>
 </header>
 
+<!-- ===== ステータス ===== -->
 <div id="status"></div>
+
+<!-- ===== 検索結果 ===== -->
 <div id="results" class="grid"></div>
 
 <script>
@@ -97,8 +119,9 @@ async function search() {
 
   try {
     const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+
     if (!res.ok) {
-      status.textContent = "検索失敗";
+      status.textContent = "検索できませんでした";
       return;
     }
 
@@ -108,25 +131,44 @@ async function search() {
     status.textContent =
       `検索結果 ${results.length}件 / 使用API: ${data.source}`;
 
+    if (results.length === 0) {
+      status.textContent = "検索結果がありません";
+      return;
+    }
+
     for (const v of results) {
       const card = document.createElement("div");
       card.className = "card";
+
       card.onclick = () => {
-        location.href = `/static/watch.html?vid=${v.videoId}`;
+        location.href = `/static/watch.html?v=${v.videoId}`;
       };
 
+      const thumb = `https://i.ytimg.com/vi/${v.videoId}/hqdefault.jpg`;
+
       card.innerHTML = `
-        <img class="thumb" src="https://i.ytimg.com/vi/${v.videoId}/hqdefault.jpg">
-        <div class="title">${v.title || ""}</div>
-        <div class="author">${v.author || ""}</div>
+        <img class="thumb" src="${thumb}" loading="lazy">
+        <div class="title">${escapeHtml(v.title || "")}</div>
+        <div class="author">${escapeHtml(v.author || "")}</div>
       `;
+
       grid.appendChild(card);
     }
 
   } catch (e) {
-    status.textContent = "通信エラー";
     console.error(e);
+    status.textContent = "通信エラーが発生しました";
   }
+}
+
+/* ===== XSS対策（最低限） ===== */
+function escapeHtml(str) {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 }
 </script>
 
