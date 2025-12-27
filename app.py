@@ -3,123 +3,114 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 import requests
 import random
+import os
 
 app = FastAPI()
 
 # ===============================
-# Invidious インスタンス（複数）
+# Invidious instances
 # ===============================
-INVIDIOUS_INSTANCES = [
+INVIDIOUS = [
     "https://pol1.iv.ggtyler.dev",
     "https://vid.puffyan.us",
     "https://invidious.snopyta.org",
 ]
 
-def pick_instance():
-    return random.choice(INVIDIOUS_INSTANCES)
+def pick():
+    return random.choice(INVIDIOUS)
 
 # ===============================
-# 静的HTML配信
+# Static files
 # ===============================
+if not os.path.isdir("statics"):
+    raise RuntimeError("Directory 'statics' does not exist")
+
 app.mount("/", StaticFiles(directory="statics", html=True), name="static")
 
 # ===============================
-# 検索
+# Search
 # ===============================
 @app.get("/api/search")
 def search(q: str):
-    inst = pick_instance()
-    try:
-        r = requests.get(
-            f"{inst}/api/v1/search",
-            params={"q": q, "type": "video"},
-            timeout=10
-        )
-        r.raise_for_status()
-        return {
-            "used_instance": inst,
-            "results": r.json()
-        }
-    except Exception:
-        raise HTTPException(status_code=500, detail="search failed")
+    inst = pick()
+    r = requests.get(
+        f"{inst}/api/v1/search",
+        params={"q": q, "type": "video"},
+        timeout=10
+    )
+    r.raise_for_status()
+    return {"results": r.json(), "used_instance": inst}
 
 # ===============================
-# 動画情報 + 関連動画
+# Trending
+# ===============================
+@app.get("/api/trending")
+def trending(region: str = "JP"):
+    inst = pick()
+    r = requests.get(
+        f"{inst}/api/v1/trending",
+        params={"region": region},
+        timeout=10
+    )
+    r.raise_for_status()
+    return {"results": r.json()}
+
+# ===============================
+# Video + related
 # ===============================
 @app.get("/api/video/{video_id}")
 def video(video_id: str):
-    inst = pick_instance()
-    try:
-        r = requests.get(
-            f"{inst}/api/v1/videos/{video_id}",
-            timeout=10
-        )
-        r.raise_for_status()
-        data = r.json()
-
-        return {
-            "video": {
-                "title": data.get("title"),
-                "description_html": data.get("descriptionHtml"),
-                "author": data.get("author"),
-                "view_count": data.get("viewCount"),
-            },
-            "related": data.get("recommendedVideos", [])
-        }
-    except Exception:
-        raise HTTPException(status_code=500, detail="video failed")
+    inst = pick()
+    r = requests.get(f"{inst}/api/v1/videos/{video_id}", timeout=10)
+    r.raise_for_status()
+    d = r.json()
+    return {
+        "title": d.get("title"),
+        "description": d.get("description"),
+        "related": d.get("recommendedVideos", [])
+    }
 
 # ===============================
-# コメント
+# Comments
 # ===============================
 @app.get("/api/comments/{video_id}")
 def comments(video_id: str):
-    inst = pick_instance()
-    try:
-        r = requests.get(
-            f"{inst}/api/v1/comments/{video_id}",
-            timeout=10
-        )
-        r.raise_for_status()
-        return {
-            "comments": r.json().get("comments", [])
-        }
-    except Exception:
-        raise HTTPException(status_code=500, detail="comments failed")
+    inst = pick()
+    r = requests.get(f"{inst}/api/v1/comments/{video_id}", timeout=10)
+    r.raise_for_status()
+    return {"comments": r.json().get("comments", [])}
 
 # ===============================
-# ダウンロードURL取得
+# 360p download (itag18)
 # ===============================
-@app.get("/api/download/{video_id}")
-def download(video_id: str):
-    inst = pick_instance()
-    try:
-        r = requests.get(
-            f"{inst}/api/v1/videos/{video_id}",
-            timeout=10
-        )
-        r.raise_for_status()
-        data = r.json()
+@app.get("/api/download/360p/{video_id}")
+def download_360p(video_id: str):
+    inst = pick()
+    r = requests.get(f"{inst}/api/v1/videos/{video_id}", timeout=10)
+    r.raise_for_status()
+    d = r.json()
 
-        formats = []
+    for f in d.get("adaptiveFormats", []):
+        if f.get("itag") == "18" and f.get("url"):
+            return {"url": f["url"]}
 
-        for f in data.get("adaptiveFormats", []):
-            if f.get("url"):
-                formats.append({
-                    "url": f["url"],
-                    "ext": f.get("container"),
-                    "quality": f.get("qualityLabel")
-                })
-
-        return {"formats": formats}
-    except Exception:
-        raise HTTPException(status_code=500, detail="download failed")
+    raise HTTPException(status_code=404, detail="360p not found")
 
 # ===============================
-# education用ダミーembed
+# m3u8 (highest)
 # ===============================
-@app.get("/api/edu/{video_id}")
-def education(video_id: str):
-    return JSONResponse({
-        "embed": f"https://www.youtubeeducation.com/embed/{video_id}"
-    })
+@app.get("/api/download/m3u8/{video_id}")
+def download_m3u8(video_id: str):
+    inst = pick()
+    r = requests.get(f"{inst}/api/v1/videos/{video_id}", timeout=10)
+    r.raise_for_status()
+    d = r.json()
+
+    streams = [
+        f for f in d.get("adaptiveFormats", [])
+        if f.get("type","").startswith("video") and f.get("url")
+    ]
+    if not streams:
+        raise HTTPException(status_code=404, detail="m3u8 not found")
+
+    return {"url": streams[0]["url"]}
