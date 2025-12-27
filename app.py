@@ -32,7 +32,7 @@ VIDEO_APIS = [
 
 SEARCH_APIS = VIDEO_APIS
 
-CHANNEL_APIS = [
+COMMENTS_APIS = [
     "https://invidious.lunivers.trade",
     "https://invidious.ducks.party",
     "https://super8.absturztau.be",
@@ -42,11 +42,7 @@ CHANNEL_APIS = [
     "https://iv.duti.dev",
 ]
 
-COMMENTS_APIS = CHANNEL_APIS
-PLAYLIST_APIS = CHANNEL_APIS
-
 EDU_STREAM_API_BASE_URL = "https://siawaseok.duckdns.org/api/stream/"
-EDU_VIDEO_API_BASE_URL  = "https://siawaseok.duckdns.org/api/video2/"
 STREAM_YTDL_API_BASE_URL = "https://yudlp.vercel.app/stream/"
 SHORT_STREAM_API_BASE_URL = "https://yt-dl-kappa.vercel.app/short/"
 
@@ -118,10 +114,6 @@ def api_video(video_id: str):
                 "source": base
             }
 
-    edu = try_json(f"{EDU_VIDEO_API_BASE_URL}{video_id}")
-    if edu:
-        return edu
-
     raise HTTPException(503, "Video info unavailable")
 
 # ===============================
@@ -145,11 +137,11 @@ def api_comments(video_id: str):
     return {"comments": [], "source": None}
 
 # ===============================
-# Download / Stream
+# Stream URL ONLY（重要）
 # ===============================
-@app.get("/api/download")
-def api_download(video_id: str, quality: str = "best"):
-    # yt-dlp / proxy 優先
+@app.get("/api/streamurl")
+def api_streamurl(video_id: str, quality: str = "best"):
+    # ① yt-dlp / proxy 系を最優先
     for base in [
         EDU_STREAM_API_BASE_URL,
         STREAM_YTDL_API_BASE_URL,
@@ -159,7 +151,7 @@ def api_download(video_id: str, quality: str = "best"):
         if data and data.get("url"):
             return RedirectResponse(data["url"])
 
-    # Invidious fallback
+    # ② Invidious fallback
     for base in VIDEO_APIS:
         data = try_json(f"{base}/api/v1/videos/{video_id}")
         if not data:
@@ -168,8 +160,9 @@ def api_download(video_id: str, quality: str = "best"):
         for f in data.get("adaptiveFormats", []):
             if not f.get("url"):
                 continue
+
             label = f.get("qualityLabel") or ""
             if quality == "best" or quality in label:
                 return RedirectResponse(f["url"])
 
-    raise HTTPException(503, "Download unavailable")
+    raise HTTPException(503, "Stream unavailable")
