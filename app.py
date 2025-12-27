@@ -1,5 +1,5 @@
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 import requests
 import random
@@ -25,7 +25,13 @@ def pick():
 if not os.path.isdir("statics"):
     raise RuntimeError("Directory 'statics' does not exist")
 
-app.mount("/", StaticFiles(directory="statics", html=True), name="static")
+# ⭐ 重要：/static にマウント
+app.mount("/static", StaticFiles(directory="statics", html=True), name="static")
+
+# ルートは index.html にリダイレクト
+@app.get("/")
+def root():
+    return RedirectResponse("/static/index.html")
 
 # ===============================
 # Search
@@ -39,7 +45,7 @@ def search(q: str):
         timeout=10
     )
     r.raise_for_status()
-    return {"results": r.json(), "used_instance": inst}
+    return {"results": r.json(), "instance": inst}
 
 # ===============================
 # Trending
@@ -81,7 +87,7 @@ def comments(video_id: str):
     return {"comments": r.json().get("comments", [])}
 
 # ===============================
-# 360p download (itag18)
+# 360p download (itag 18)
 # ===============================
 @app.get("/api/download/360p/{video_id}")
 def download_360p(video_id: str):
@@ -94,10 +100,10 @@ def download_360p(video_id: str):
         if f.get("itag") == "18" and f.get("url"):
             return {"url": f["url"]}
 
-    raise HTTPException(status_code=404, detail="360p not found")
+    raise HTTPException(status_code=404, detail="360p stream not found")
 
 # ===============================
-# m3u8 (highest)
+# m3u8 (highest quality)
 # ===============================
 @app.get("/api/download/m3u8/{video_id}")
 def download_m3u8(video_id: str):
@@ -108,7 +114,7 @@ def download_m3u8(video_id: str):
 
     streams = [
         f for f in d.get("adaptiveFormats", [])
-        if f.get("type","").startswith("video") and f.get("url")
+        if f.get("type", "").startswith("video") and f.get("url")
     ]
     if not streams:
         raise HTTPException(status_code=404, detail="m3u8 not found")
