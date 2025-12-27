@@ -2,81 +2,51 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<title>仙人YouTubeビュアー</title>
+<title>動画再生</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 
 <style>
 body {
   margin: 0;
   font-family: system-ui, sans-serif;
-  background: #f4f6f8;
+  background: #f9fafb;
 }
 
 header {
+  padding: 12px;
   background: #ffffff;
-  padding: 14px;
-  border-bottom: 1px solid #ddd;
-}
-
-h1 {
-  font-size: 18px;
-  margin: 0 0 6px 0;
-}
-
-.sub {
-  font-size: 13px;
-  color: #666;
-}
-
-.player {
-  background: #000;
-  aspect-ratio: 16 / 9;
+  box-shadow: 0 2px 6px rgba(0,0,0,.1);
 }
 
 iframe {
   width: 100%;
-  height: 100%;
+  height: 240px;
   border: none;
 }
 
-.controls {
-  display: flex;
-  gap: 8px;
+.section {
+  background: #fff;
+  margin: 12px;
   padding: 12px;
-  background: #ffffff;
-  border-bottom: 1px solid #ddd;
+  border-radius: 8px;
 }
 
 button {
-  padding: 10px 14px;
-  border-radius: 0;
-  border: 1px solid #ccc;
-  background: #ffffff;
+  padding: 10px;
+  border: none;
+  background: #2563eb;
+  color: #fff;
+  border-radius: 6px;
   cursor: pointer;
 }
 
-button:hover {
-  background: #f0f0f0;
+button:disabled {
+  background: #9ca3af;
 }
 
-.section {
-  background: #ffffff;
-  margin: 12px;
-  padding: 12px;
-}
-
-.section h3 {
-  margin-top: 0;
-}
-
-.comment {
-  border-top: 1px solid #eee;
-  padding: 8px 0;
-}
-
-.author {
-  font-weight: bold;
-  font-size: 13px;
+#loader {
+  display: none;
+  margin-top: 10px;
 }
 </style>
 </head>
@@ -84,22 +54,15 @@ button:hover {
 <body>
 
 <header>
-  <h1 id="title">読み込み中...</h1>
-  <div class="sub" id="author"></div>
+  <iframe id="player"></iframe>
 </header>
 
-<div class="player">
-  <iframe id="player" allowfullscreen></iframe>
-</div>
-
-<div class="controls">
-  <button onclick="playNocookie()">nocookie 再生</button>
-  <button onclick="playNormal()">通常再生</button>
-</div>
-
 <div class="section">
-  <h3>動画情報</h3>
-  <p id="desc">読み込み中...</p>
+  <h2 id="title">読み込み中...</h2>
+  <p id="desc"></p>
+
+  <button id="dlBtn" onclick="download()">⬇ ダウンロード（360p）</button>
+  <div id="loader">⏳ ダウンロードURL取得中...</div>
 </div>
 
 <div class="section">
@@ -111,59 +74,71 @@ button:hover {
 const videoId = new URLSearchParams(location.search).get("v");
 const player = document.getElementById("player");
 
-function playNocookie() {
-  player.src = `https://www.youtube-nocookie.com/embed/${videoId}`;
-}
+player.src = `https://www.youtube-nocookie.com/embed/${videoId}`;
 
-function playNormal() {
-  player.src = `https://www.youtube.com/embed/${videoId}`;
-}
-
-// 初期は nocookie
-playNocookie();
-
-// 動画情報取得
+/* ===============================
+   動画情報
+=============================== */
 fetch(`/api/video?video_id=${videoId}`)
-  .then(res => res.json())
-  .then(data => {
-    const v = data.video;
-    document.getElementById("title").textContent = v.title || "タイトル不明";
-    document.getElementById("author").textContent =
-      `${v.author || ""} / ${data.source}`;
+  .then(r => r.json())
+  .then(d => {
+    document.getElementById("title").textContent =
+      d.video?.title || "取得失敗";
     document.getElementById("desc").textContent =
-      v.description || "説明なし";
+      d.video?.description || "";
   })
-  .catch(() => {
+  .catch(e => {
     document.getElementById("title").textContent = "動画情報取得失敗";
   });
 
-// コメント取得
+/* ===============================
+   コメント
+=============================== */
 fetch(`/api/comments?video_id=${videoId}`)
-  .then(res => res.json())
-  .then(data => {
+  .then(r => r.json())
+  .then(d => {
     const box = document.getElementById("comments");
     box.innerHTML = "";
 
-    if (!data.comments.length) {
-      box.textContent = "コメントがありません";
+    if (!d.comments || d.comments.length === 0) {
+      box.textContent = "コメントなし";
       return;
     }
 
-    data.comments.forEach(c => {
+    d.comments.forEach(c => {
       const div = document.createElement("div");
-      div.className = "comment";
-      div.innerHTML = `
-        <div class="author">${c.author || "匿名"}</div>
-        <div>${c.content || ""}</div>
-      `;
+      div.textContent = `${c.author}: ${c.content}`;
       box.appendChild(div);
     });
   })
   .catch(() => {
-    document.getElementById("comments").textContent =
-      "コメント取得失敗";
+    document.getElementById("comments").textContent = "コメント取得失敗";
   });
+
+/* ===============================
+   ダウンロード
+=============================== */
+function download() {
+  const btn = document.getElementById("dlBtn");
+  const loader = document.getElementById("loader");
+
+  btn.disabled = true;
+  loader.style.display = "block";
+
+  fetch(`/api/download?video_id=${videoId}`)
+    .then(r => r.json())
+    .then(d => {
+      window.open(d.url, "_blank");
+    })
+    .catch(() => {
+      alert("ダウンロード失敗");
+    })
+    .finally(() => {
+      btn.disabled = false;
+      loader.style.display = "none";
+    });
+}
 </script>
 
 </body>
-  </html>
+</html>
