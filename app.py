@@ -42,7 +42,7 @@ COMMENTS_APIS = [
     "https://iv.duti.dev",
 ]
 
-EDU_STREAM_API_BASE_URL = "https://siawaseok.duckdns.org/api/stream/"
+EDU_STREAM_API_BASE_URL = "https://raw.githubusercontent.com/toka-kun/Education/refs/heads/main/keys/key1.json"
 STREAM_YTDL_API_BASE_URL = "https://yudlp.vercel.app/stream/"
 SHORT_STREAM_API_BASE_URL = "https://yt-dl-kappa.vercel.app/short/"
 
