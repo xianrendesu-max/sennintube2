@@ -137,11 +137,11 @@ def api_comments(video_id: str):
     return {"comments": [], "source": None}
 
 # ===============================
-# Stream URL ONLY（重要）
+# Stream URL ONLY（日本語音声優先）
 # ===============================
 @app.get("/api/streamurl")
 def api_streamurl(video_id: str, quality: str = "best"):
-    # ① yt-dlp / proxy 系を最優先
+    # ① yt-dlp / proxy 系（仕様変更なし）
     for base in [
         EDU_STREAM_API_BASE_URL,
         STREAM_YTDL_API_BASE_URL,
@@ -151,7 +151,7 @@ def api_streamurl(video_id: str, quality: str = "best"):
         if data and data.get("url"):
             return RedirectResponse(data["url"])
 
-    # ② Invidious fallback
+    # ② Invidious fallback（🔴 英語吹き替え除外）
     for base in VIDEO_APIS:
         data = try_json(f"{base}/api/v1/videos/{video_id}")
         if not data:
@@ -161,7 +161,17 @@ def api_streamurl(video_id: str, quality: str = "best"):
             if not f.get("url"):
                 continue
 
+            # 🔴 英語音声を除外
+            lang = (f.get("language") or "").lower()
+            audio_track = str(f.get("audioTrack") or "").lower()
+
+            if "en" in lang:
+                continue
+            if "english" in audio_track:
+                continue
+
             label = f.get("qualityLabel") or ""
+
             if quality == "best" or quality in label:
                 return RedirectResponse(f["url"])
 
