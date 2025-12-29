@@ -1,63 +1,79 @@
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import APIRouter, HTTPException
+from fastapi.responses import RedirectResponse
 import requests
-import os
 
-app = FastAPI()
+router = APIRouter(prefix="/api/sc", tags=["soundcloud"])
 
-# ===============================
-# SoundCloud 設定
-# ===============================
-SOUNDCLOUD_CLIENT_ID = os.getenv(
-    "SOUNDCLOUD_CLIENT_ID",
-    "YOUR_CLIENT_ID_HERE"
-)
-
-SEARCH_URL = "https://api-v2.soundcloud.com/search/tracks"
+SC_CLIENT_ID = "Lz9s0yJ5EwXnX"  # 公開client_id（変更される可能性あり）
+TIMEOUT = 6
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0"
 }
 
 # ===============================
-# 検索API
+# SoundCloud 検索
 # ===============================
-@app.get("/music/search")
-def search_music(
-    q: str = Query(..., min_length=1),
-    limit: int = Query(20, ge=1, le=50)
-):
+@router.get("/search")
+def sc_search(q: str):
+    url = "https://api-v2.soundcloud.com/search/tracks"
+
     params = {
         "q": q,
-        "limit": limit,
-        "client_id": SOUNDCLOUD_CLIENT_ID
+        "client_id": SC_CLIENT_ID,
+        "limit": 20
     }
 
     try:
-        res = requests.get(
-            SEARCH_URL,
-            params=params,
-            headers=HEADERS,
-            timeout=10
-        )
-    except Exception:
-        raise HTTPException(status_code=502, detail="SoundCloud接続失敗")
+        r = requests.get(url, params=params, headers=HEADERS, timeout=TIMEOUT)
+        r.raise_for_status()
+        data = r.json()
 
-    if res.status_code != 200:
-        raise HTTPException(status_code=500, detail="SoundCloud API error")
+        results = []
+        for t in data.get("collection", []):
+            results.append({
+                "id": t.get("id"),
+                "title": t.get("title"),
+                "username": t.get("user", {}).get("username"),
+                "artwork_url": t.get("artwork_url"),
+                "duration": t.get("duration"),
+                "streamable": t.get("streamable")
+            })
 
-    data = res.json()
+        return {
+            "count": len(results),
+            "results": results
+        }
 
-    tracks = []
-    for t in data.get("collection", []):
-        tracks.append({
-            "id": t.get("id"),
-            "title": t.get("title"),
-            "username": t.get("user", {}).get("username"),
-            "artwork_url": t.get("artwork_url")
-        })
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"SoundCloud search failed: {e}")
 
-    return {
-        "query": q,
-        "count": len(tracks),
-        "tracks": tracks
+
+# ===============================
+# SoundCloud 再生URL取得
+# ===============================
+@router.get("/stream")
+def sc_stream(track_id: str):
+    track_url = f"https://api-v2.soundcloud.com/tracks/{track_id}"
+
+    params = {
+        "client_id": SC_CLIENT_ID
     }
+
+    try:
+        r = requests.get(track_url, params=params, headers=HEADERS, timeout=TIMEOUT)
+        r.raise_for_status()
+        track = r.json()
+
+        transcodings = track["media"]["transcodings"]
+
+        for t in transcodings:
+            if t["format"]["protocol"] == "progressive":
+                r2 = requests.get(t["url"], params=params, timeout=TIMEOUT)
+                r2.raise_for_status()
+                return RedirectResponse(r2.json()["url"])
+
+        raise HTTPException(status_code=404, detail="Playable stream not found")
+
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"SoundCloud stream failed: {e}")
