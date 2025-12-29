@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>仙人Music - <%= query || '音楽検索' %></title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<body class="bg-gray-100 text-gray-800 min-h-screen flex flex-col">
+
+<!-- ================= HEADER ================= -->
+<header class="bg-white shadow sticky top-0 z-40">
+  <div class="max-w-3xl mx-auto p-4 flex items-center gap-3">
+    <h1 class="text-xl font-bold text-green-600 whitespace-nowrap">
+       仙人Music
+    </h1>
+
+    <form action="/wakams/s" method="get" class="flex flex-1 gap-2">
+      <input
+        type="text"
+        name="q"
+        value="<%= query %>"
+        placeholder="曲・アーティストを検索"
+        class="flex-1 px-4 py-2 rounded-full border border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-400"
+        required
+      >
+      <button
+        type="submit"
+        class="px-4 py-2 bg-green-500 text-white rounded-full hover:bg-green-600 transition">
+        🔍
+      </button>
+    </form>
+
+    <button
+      onclick="location.href='/wakams/f'"
+      class="px-3 py-2 bg-yellow-400 rounded-full hover:bg-yellow-500 transition">
+      ⭐
+    </button>
+  </div>
+</header>
+
+<!-- ================= MAIN ================= -->
+<main class="flex-1 max-w-3xl mx-auto w-full p-4 space-y-4">
+
+<% if (tracks && tracks.length > 0) { %>
+  <% tracks.forEach(track => { %>
+    <div class="flex items-center gap-4 bg-white rounded-xl shadow p-4 hover:shadow-md transition">
+
+      <img
+        src="<%= track.artwork_url %>"
+        alt="artwork"
+        class="w-16 h-16 rounded-lg object-cover bg-gray-200">
+
+      <div class="flex-1 min-w-0">
+        <p class="font-semibold truncate"><%= track.title %></p>
+        <p class="text-sm text-gray-500 truncate"><%= track.username %></p>
+      </div>
+
+      <div class="flex gap-2">
+        <!-- 再生 -->
+        <button
+          class="play-btn w-10 h-10 flex items-center justify-center rounded-full bg-green-500 hover:bg-green-600 text-white"
+          data-track-id="<%= track.id %>">
+          ▶
+        </button>
+
+        <!-- お気に入り -->
+        <button
+          class="favorite-btn w-10 h-10 flex items-center justify-center rounded-full border text-xl"
+          data-id="<%= track.id %>"
+          onclick="toggleFavorite('<%= track.artwork_url %>', '<%= track.title %>', '<%= track.id %>')">
+          ❤️
+        </button>
+      </div>
+    </div>
+  <% }) %>
+
+<% } else { %>
+  <p class="text-center text-gray-400 mt-12">
+    <%= query ? '曲が見つかりませんでした' : '検索して音楽を探しましょう 🎧' %>
+  </p>
+<% } %>
+
+</main>
+
+<!-- ================= PLAYER ================= -->
+<div
+  id="player-container"
+  class="fixed bottom-0 left-0 w-full bg-white border-t shadow-lg hidden">
+  <iframe
+    id="player"
+    class="w-full"
+    style="height:90px"
+    allow="autoplay">
+  </iframe>
+</div>
+
+<!-- ================= FOOTER ================= -->
+<footer class="text-center text-xs text-gray-400 py-4">
+  © 仙人Music
+</footer>
+
+<!-- ================= SCRIPT ================= -->
+<script>
+/* 再生 */
+document.querySelectorAll('.play-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const id = btn.dataset.trackId;
+    const iframe = document.getElementById('player');
+    iframe.src = `https://w.soundcloud.com/player/?url=https%3A//api.soundcloud.com/tracks/${id}&auto_play=true`;
+    document.getElementById('player-container').classList.remove('hidden');
+  });
+});
+
+/* お気に入り */
+function toggleFavorite(artwork_url, title, id) {
+  let favorites = JSON.parse(localStorage.getItem('favorites')) || [];
+  const index = favorites.findIndex(t => t.id === id);
+
+  if (index === -1) {
+    favorites.push({ artwork_url, title, id });
+    toast(`「${title}」をお気に入りに追加`);
+  } else {
+    favorites.splice(index, 1);
+    toast(`「${title}」をお気に入り解除`);
+  }
+
+  localStorage.setItem('favorites', JSON.stringify(favorites));
+  updateFavorites();
+}
+
+function updateFavorites() {
+  const favorites = JSON.parse(localStorage.getItem('favorites')) || [];
+  document.querySelectorAll('.favorite-btn').forEach(btn => {
+    const id = btn.dataset.id;
+    btn.classList.toggle('text-red-500', favorites.some(f => f.id === id));
+  });
+}
+updateFavorites();
+
+/* トースト */
+function toast(text) {
+  const el = document.createElement('div');
+  el.className = "fixed top-4 right-4 bg-green-500 text-white px-4 py-2 rounded-lg shadow";
+  el.textContent = text;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 2500);
+}
+</script>
+
+</body>
+</html>
