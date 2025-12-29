@@ -142,20 +142,58 @@ def api_comments(video_id: str):
     return {"comments": [], "source": None}
 
 # ===============================
-# Channel
+# Channel（完全対応版）
 # ===============================
 @app.get("/api/channel")
 def api_channel(c: str):
     random.shuffle(VIDEO_APIS)
 
     for base in VIDEO_APIS:
-        data = try_json(f"{base}/api/v1/channels/{c}")
-        if data:
-            data["source"] = base
-            return data
+        ch = try_json(f"{base}/api/v1/channels/{c}")
+        if not ch:
+            continue
+
+        # ========= 動画 =========
+        videos = []
+        for v in ch.get("latestVideos", []):
+            published = iso_to_date(v.get("published"))
+
+            videos.append({
+                "videoId": v.get("videoId"),
+                "title": v.get("title"),
+                "author": ch.get("author"),
+                "authorId": c,
+                "viewCount": v.get("viewCount"),
+                "viewCountText": v.get("viewCountText"),
+                "published": published.isoformat() if published else None,
+                "publishedText": v.get("publishedText")
+            })
+
+        # ========= 関連チャンネル =========
+        related = []
+        for r in ch.get("relatedChannels", []):
+            related.append({
+                "channelId": r.get("authorId"),
+                "name": r.get("author"),
+                "icon": r.get("authorThumbnails", [{}])[-1].get("url"),
+                "subCountText": r.get("subCountText")
+            })
+
+        return {
+            "author": ch.get("author"),
+            "authorId": c,
+            "authorThumbnails": ch.get("authorThumbnails"),
+            "description": ch.get("description"),
+            "subCount": ch.get("subCount"),
+            "viewCount": ch.get("viewCount"),
+            "videoCount": ch.get("videoCount"),
+            "joinedDate": ch.get("joinedDate"),
+            "latestVideos": videos,
+            "relatedChannels": related,
+            "source": base
+        }
 
     raise HTTPException(status_code=503, detail="Channel unavailable")
-
 # ===============================
 # Stream URL ONLY（日本語音声優先）
 # ===============================
