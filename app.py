@@ -13,6 +13,12 @@ app = FastAPI()
 # Render で statics が無くても即死しないようにする
 if os.path.isdir("statics"):
     app.mount("/static", StaticFiles(directory="statics"), name="static")
+
+    # ★ 仙人music
+    if os.path.isdir("statics/music"):
+        app.mount("/music", StaticFiles(directory="statics/music", html=True), name="music")
+    else:
+        print("⚠ statics/music directory not found (skipped mount)")
 else:
     print("⚠ statics directory not found (skipped mount)")
 
@@ -153,13 +159,9 @@ def api_channel(c: str):
         if not ch:
             continue
 
-        # ===============================
-        # 動画一覧（並び替え完全対応）
-        # ===============================
         latest_videos = []
 
         for v in ch.get("latestVideos", []):
-            # published を ISO 形式に正規化
             published_raw = v.get("published")
             published_iso = None
 
@@ -180,18 +182,13 @@ def api_channel(c: str):
                 "publishedText": v.get("publishedText") or ""
             })
 
-        # ===============================
-        # 総再生回数 / 動画数 / 開設日 fallback
-        # ===============================
         view_count = ch.get("viewCount")
         video_count = ch.get("videoCount")
         joined_date = ch.get("joinedDate")
 
-        # videoCount が無い場合は latestVideos 数
         if not isinstance(video_count, int):
             video_count = len(latest_videos)
 
-        # joinedDate が無い場合は最古動画の日付
         if not isinstance(joined_date, str):
             published_dates = [
                 v["published"]
@@ -200,9 +197,6 @@ def api_channel(c: str):
             ]
             joined_date = min(published_dates) if published_dates else None
 
-        # ===============================
-        # 関連チャンネル
-        # ===============================
         related_channels = []
 
         for r in ch.get("relatedChannels", []):
@@ -219,9 +213,6 @@ def api_channel(c: str):
                 "subCountText": r.get("subCountText") or "?"
             })
 
-        # ===============================
-        # フロント向け最終レスポンス
-        # ===============================
         return {
             "author": ch.get("author"),
             "authorId": c,
@@ -237,12 +228,12 @@ def api_channel(c: str):
         }
 
     raise HTTPException(status_code=503, detail="Channel unavailable")
+
 # ===============================
 # Stream URL ONLY（日本語音声優先）
 # ===============================
 @app.get("/api/streamurl")
 def api_streamurl(video_id: str, quality: str = "best"):
-    # ① yt-dlp / proxy 系
     for base in [
         EDU_STREAM_API_BASE_URL,
         STREAM_YTDL_API_BASE_URL,
@@ -252,7 +243,6 @@ def api_streamurl(video_id: str, quality: str = "best"):
         if data and data.get("url"):
             return RedirectResponse(data["url"])
 
-    # ② Invidious fallback（英語音声除外）
     for base in VIDEO_APIS:
         data = try_json(f"{base}/api/v1/videos/{video_id}")
         if not data:
