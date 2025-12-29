@@ -10,14 +10,17 @@ app = FastAPI()
 # ===============================
 # Static
 # ===============================
-if not os.path.isdir("statics"):
-    raise RuntimeError("statics directory not found")
-
-app.mount("/static", StaticFiles(directory="statics"), name="static")
+# Render で statics が無くても即死しないようにする
+if os.path.isdir("statics"):
+    app.mount("/static", StaticFiles(directory="statics"), name="static")
+else:
+    print("⚠ statics directory not found (skipped mount)")
 
 @app.get("/")
 def root():
-    return FileResponse("statics/index.html")
+    if os.path.isfile("statics/index.html"):
+        return FileResponse("statics/index.html")
+    return {"status": "index.html not found"}
 
 # ===============================
 # API BASE LIST
@@ -60,8 +63,8 @@ def try_json(url, params=None):
         r = requests.get(url, params=params, headers=HEADERS, timeout=TIMEOUT)
         if r.status_code == 200:
             return r.json()
-    except:
-        pass
+    except Exception as e:
+        print("request error:", e)
     return None
 
 # ===============================
@@ -85,7 +88,7 @@ def api_search(q: str):
                 "videoId": v.get("videoId"),
                 "title": v.get("title"),
                 "author": v.get("author"),
-                "authorId": v.get("authorId"),  # ← 追加（他は変更なし）
+                "authorId": v.get("authorId"),
             })
 
         if results:
@@ -95,7 +98,7 @@ def api_search(q: str):
                 "source": base
             }
 
-    raise HTTPException(503, "Search unavailable")
+    raise HTTPException(status_code=503, detail="Search unavailable")
 
 # ===============================
 # Video Info
@@ -116,7 +119,7 @@ def api_video(video_id: str):
                 "source": base
             }
 
-    raise HTTPException(503, "Video info unavailable")
+    raise HTTPException(status_code=503, detail="Video info unavailable")
 
 # ===============================
 # Comments
@@ -137,6 +140,21 @@ def api_comments(video_id: str):
                 "source": base
             }
     return {"comments": [], "source": None}
+
+# ===============================
+# Channel
+# ===============================
+@app.get("/api/channel")
+def api_channel(c: str):
+    random.shuffle(VIDEO_APIS)
+
+    for base in VIDEO_APIS:
+        data = try_json(f"{base}/api/v1/channels/{c}")
+        if data:
+            data["source"] = base
+            return data
+
+    raise HTTPException(status_code=503, detail="Channel unavailable")
 
 # ===============================
 # Stream URL ONLY（日本語音声優先）
@@ -176,20 +194,4 @@ def api_streamurl(video_id: str, quality: str = "best"):
             if quality == "best" or quality in label:
                 return RedirectResponse(f["url"])
 
-    raise HTTPException(503, "Stream unavailable")
-
- # ===============================
- # Channel
- # ===============================
- @app.get("/api/channel")
- def api_channel(c: str):
-     random.shuffle(VIDEO_APIS)
-
-     for base in VIDEO_APIS:
-         data = try_json(f"{base}/api/v1/channels/{c}")
-         if data:
-             data["source"] = base
-             return data
-
-     raise HTTPException(503, "Channel unavailable")
- 
+    raise HTTPException(status_code=503, detail="Stream unavailable")
