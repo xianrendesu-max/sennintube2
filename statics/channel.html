@@ -48,10 +48,38 @@ header .sub {
   color: #555;
 }
 
-/* ===== ステータス ===== */
-#status {
+/* ===== 詳細 ===== */
+#channelDetails {
+  padding: 16px;
+  background: #fff;
+  border-bottom: 1px solid #ddd;
+}
+
+#channelDesc {
+  font-size: 14px;
+  white-space: pre-wrap;
+}
+
+#channelStats {
+  margin-top: 8px;
+  font-size: 13px;
+  color: #555;
+}
+
+/* ===== コントロール ===== */
+#controls {
   padding: 12px 16px;
   font-size: 14px;
+}
+
+select {
+  padding: 4px;
+}
+
+/* ===== ステータス ===== */
+#status {
+  padding: 8px 16px;
+  font-size: 13px;
   color: #555;
 }
 
@@ -93,6 +121,11 @@ header .sub {
   font-size: 12px;
   color: #666;
 }
+
+.channelLink {
+  color: #065fd4;
+  cursor: pointer;
+}
 </style>
 </head>
 
@@ -106,12 +139,33 @@ header .sub {
   </div>
 </header>
 
+<div id="channelDetails" style="display:none;">
+  <div id="channelDesc"></div>
+  <div id="channelStats"></div>
+</div>
+
+<div id="controls">
+  並び替え:
+  <select id="sortSelect">
+    <option value="new">新しい順</option>
+    <option value="old">古い順</option>
+    <option value="popular">人気順</option>
+  </select>
+</div>
+
 <div id="status">読み込み中…</div>
+
+<h3 style="padding:0 16px;">動画</h3>
 <div id="videos" class="grid"></div>
+
+<h3 style="padding:16px 16px 0;">関連チャンネル</h3>
+<div id="relatedChannels" class="grid"></div>
 
 <script>
 const params = new URLSearchParams(location.search);
 const channelId = params.get("c");
+
+let cachedVideos = [];
 
 if (!channelId) {
   document.getElementById("status").textContent =
@@ -120,9 +174,12 @@ if (!channelId) {
   loadChannel(channelId);
 }
 
+document.getElementById("sortSelect").onchange = () => {
+  renderVideos();
+};
+
 async function loadChannel(id) {
   const status = document.getElementById("status");
-  const grid = document.getElementById("videos");
 
   try {
     const res = await fetch(`/api/channel?c=${encodeURIComponent(id)}`);
@@ -142,39 +199,92 @@ async function loadChannel(id) {
 
     document.getElementById("channelHeader").style.display = "flex";
 
-    /* ===== 動画一覧 ===== */
-    const videos = data.latestVideos || [];
+    /* ===== 詳細 ===== */
+    document.getElementById("channelDesc").textContent =
+      data.description || "";
+
+    document.getElementById("channelStats").innerHTML = `
+      総再生回数: ${data.viewCount?.toLocaleString() || "?"} 回<br>
+      動画数: ${data.videoCount?.toLocaleString() || "?"} 本<br>
+      開設日: ${data.joinedDate || "?"}
+    `;
+
+    document.getElementById("channelDetails").style.display = "block";
+
+    /* ===== 動画 ===== */
+    cachedVideos = data.latestVideos || [];
     status.textContent =
-      `動画 ${videos.length} 本 / 使用API: ${data.source}`;
+      `動画 ${cachedVideos.length} 本 / 使用API: ${data.source}`;
 
-    grid.innerHTML = "";
+    renderVideos();
 
-    for (const v of videos) {
-      const card = document.createElement("div");
-      card.className = "card";
+    /* ===== 関連チャンネル ===== */
+    const rel = data.relatedChannels || [];
+    const relGrid = document.getElementById("relatedChannels");
+    relGrid.innerHTML = "";
 
-      card.onclick = () => {
-        location.href = `/static/watch.html?v=${v.videoId}`;
+    for (const c of rel) {
+      const d = document.createElement("div");
+      d.className = "card";
+      d.onclick = () => {
+        location.href = `/static/channel.html?c=${c.channelId}`;
       };
 
-      card.innerHTML = `
-        <img class="thumb"
-          src="https://i.ytimg.com/vi/${v.videoId}/hqdefault.jpg"
-          loading="lazy">
-        <div class="title">${escapeHtml(v.title || "")}</div>
-        <div class="meta">${v.viewCountText || ""}</div>
+      d.innerHTML = `
+        <img class="thumb" src="${c.icon}">
+        <div class="title">${escapeHtml(c.name)}</div>
+        <div class="meta">登録者 ${c.subCountText || "?"}</div>
       `;
-
-      grid.appendChild(card);
-    }
-
-    if (videos.length === 0) {
-      status.textContent = "このチャンネルには動画がありません";
+      relGrid.appendChild(d);
     }
 
   } catch (e) {
     console.error(e);
     status.textContent = "チャンネル情報を取得できませんでした";
+  }
+}
+
+function renderVideos() {
+  const grid = document.getElementById("videos");
+  const mode = document.getElementById("sortSelect").value;
+
+  let list = [...cachedVideos];
+
+  if (mode === "new") {
+    list.sort((a,b) => new Date(b.published) - new Date(a.published));
+  } else if (mode === "old") {
+    list.sort((a,b) => new Date(a.published) - new Date(b.published));
+  } else if (mode === "popular") {
+    list.sort((a,b) => (b.viewCount||0) - (a.viewCount||0));
+  }
+
+  grid.innerHTML = "";
+
+  for (const v of list) {
+    const card = document.createElement("div");
+    card.className = "card";
+
+    card.onclick = () => {
+      location.href = `/static/watch.html?v=${v.videoId}`;
+    };
+
+    card.innerHTML = `
+      <img class="thumb"
+        src="https://i.ytimg.com/vi/${v.videoId}/hqdefault.jpg"
+        loading="lazy">
+      <div class="title">${escapeHtml(v.title || "")}</div>
+      <div class="meta">
+        ${v.viewCountText || ""}<br>
+        ${v.publishedText || ""}
+      </div>
+      <div class="meta">
+        <span class="channelLink"
+          onclick="event.stopPropagation(); location.href='/static/channel.html?c=${v.authorId}'">
+          ${escapeHtml(v.author || "")}
+        </span>
+      </div>
+    `;
+    grid.appendChild(card);
   }
 }
 
@@ -190,4 +300,4 @@ function escapeHtml(str) {
 </script>
 
 </body>
-</html>
+  </html>
