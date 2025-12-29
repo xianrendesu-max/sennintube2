@@ -40,25 +40,6 @@ header button {
   font-size: 15px;
 }
 
-/* ===== 音楽ボタン ===== */
-.music-launch {
-  padding: 10px 16px;
-  margin: 8px 16px 0 16px;
-  background: linear-gradient(135deg, #22c55e, #16a34a);
-  color: #fff;
-  border-radius: 999px;
-  text-align: center;
-  font-weight: bold;
-  cursor: pointer;
-  box-shadow: 0 4px 10px rgba(0,0,0,.15);
-  transition: transform .1s ease, box-shadow .1s ease;
-}
-
-.music-launch:hover {
-  transform: scale(1.02);
-  box-shadow: 0 6px 14px rgba(0,0,0,.2);
-}
-
 /* ===== ステータス ===== */
 #status {
   padding: 10px 16px;
@@ -119,14 +100,6 @@ header button {
   <button onclick="search()">検索</button>
 </header>
 
-<!-- 仙人Music 起動ボタン（検索前のみ表示） -->
-<div
-  id="music-launch"
-  class="music-launch"
-  onclick="location.href='/music'">
-  　仙人Music を開く
-</div>
-
 <div id="status"></div>
 <div id="results" class="grid"></div>
 
@@ -135,14 +108,8 @@ async function search() {
   const q = document.getElementById("q").value.trim();
   const status = document.getElementById("status");
   const grid = document.getElementById("results");
-  const musicBtn = document.getElementById("music-launch");
 
   if (!q) return;
-
-  /* 検索されたら音楽ボタンを非表示 */
-  if (musicBtn) {
-    musicBtn.style.display = "none";
-  }
 
   grid.innerHTML = "";
   status.textContent = "検索中…";
