@@ -7,7 +7,7 @@
 <script src="https://cdn.tailwindcss.com"></script>
 </head>
 
-<body class="bg-slate-50 text-gray-900 min-h-screen">
+<body class="bg-slate-50 text-gray-900 min-h-screen pb-40">
 
 <!-- ===== ヘッダー ===== -->
 <header class="bg-white shadow-md p-4 flex justify-center sticky top-0 z-10">
@@ -33,13 +33,27 @@
   </p>
 </main>
 
-<!-- ===== プレイヤー ===== -->
+<!-- ===== 再生中バー ===== -->
 <div
   id="playerBox"
-  class="fixed bottom-0 left-0 w-full bg-white border-t shadow-lg hidden">
+  class="fixed bottom-0 left-0 w-full bg-white border-t shadow-xl hidden">
+
+  <!-- 再生中情報 -->
+  <div class="flex items-center gap-4 p-3">
+    <img
+      id="nowArtwork"
+      class="w-14 h-14 rounded-lg bg-gray-200"
+    >
+    <div class="flex-1 min-w-0">
+      <p id="nowTitle" class="font-bold truncate"></p>
+      <p id="nowArtist" class="text-sm text-gray-500 truncate"></p>
+    </div>
+  </div>
+
+  <!-- プレイヤー -->
   <iframe
     id="player"
-    class="w-full h-28"
+    class="w-full h-28 border-t"
     allow="autoplay">
   </iframe>
 </div>
@@ -49,6 +63,10 @@ const form = document.getElementById("searchForm");
 const results = document.getElementById("results");
 const playerBox = document.getElementById("playerBox");
 const player = document.getElementById("player");
+
+const nowArtwork = document.getElementById("nowArtwork");
+const nowTitle = document.getElementById("nowTitle");
+const nowArtist = document.getElementById("nowArtist");
 
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -93,14 +111,21 @@ form.addEventListener("submit", async (e) => {
           <p class="text-sm text-gray-500 truncate">${track.username}</p>
         </div>
         <button
-          class="play bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg font-bold transition">
+          class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg font-bold transition">
           ▶
         </button>
       `;
 
-      div.querySelector(".play").onclick = () => {
+      div.querySelector("button").onclick = () => {
+        // 再生
         player.src =
           `https://w.soundcloud.com/player/?url=https://api.soundcloud.com/tracks/${track.id}&auto_play=true`;
+
+        // 再生中表示
+        nowArtwork.src = track.artwork_url || "";
+        nowTitle.textContent = track.title;
+        nowArtist.textContent = track.username;
+
         playerBox.classList.remove("hidden");
       };
 
