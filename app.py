@@ -142,7 +142,7 @@ def api_comments(video_id: str):
     return {"comments": [], "source": None}
 
 # ===============================
-# Channel（完全対応版）
+# Channel
 # ===============================
 @app.get("/api/channel")
 def api_channel(c: str):
@@ -153,32 +153,49 @@ def api_channel(c: str):
         if not ch:
             continue
 
-        # ========= 動画 =========
-        videos = []
+        # ===============================
+        # 動画一覧（並び替え対応）
+        # ===============================
+        latest_videos = []
         for v in ch.get("latestVideos", []):
-            published = iso_to_date(v.get("published"))
+            published_raw = v.get("published")
+            published_iso = None
 
-            videos.append({
+            if published_raw:
+                try:
+                    published_iso = published_raw.replace("Z", "+00:00")
+                except:
+                    published_iso = None
+
+            latest_videos.append({
                 "videoId": v.get("videoId"),
                 "title": v.get("title"),
                 "author": ch.get("author"),
                 "authorId": c,
                 "viewCount": v.get("viewCount"),
                 "viewCountText": v.get("viewCountText"),
-                "published": published.isoformat() if published else None,
+                "published": published_iso,
                 "publishedText": v.get("publishedText")
             })
 
-        # ========= 関連チャンネル =========
-        related = []
+        # ===============================
+        # 関連チャンネル
+        # ===============================
+        related_channels = []
         for r in ch.get("relatedChannels", []):
-            related.append({
+            related_channels.append({
                 "channelId": r.get("authorId"),
                 "name": r.get("author"),
-                "icon": r.get("authorThumbnails", [{}])[-1].get("url"),
+                "icon": (
+                    r.get("authorThumbnails", [{}])[-1].get("url")
+                    if r.get("authorThumbnails") else None
+                ),
                 "subCountText": r.get("subCountText")
             })
 
+        # ===============================
+        # フロント向け整形レスポンス
+        # ===============================
         return {
             "author": ch.get("author"),
             "authorId": c,
@@ -188,8 +205,8 @@ def api_channel(c: str):
             "viewCount": ch.get("viewCount"),
             "videoCount": ch.get("videoCount"),
             "joinedDate": ch.get("joinedDate"),
-            "latestVideos": videos,
-            "relatedChannels": related,
+            "latestVideos": latest_videos,
+            "relatedChannels": related_channels,
             "source": base
         }
 
