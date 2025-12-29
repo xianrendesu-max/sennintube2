@@ -80,10 +80,12 @@ def api_search(q: str):
         for v in data:
             if not v.get("videoId"):
                 continue
+
             results.append({
-                "videoId": v["videoId"],
+                "videoId": v.get("videoId"),
                 "title": v.get("title"),
                 "author": v.get("author"),
+                "authorId": v.get("authorId"),  # ← 追加（他は変更なし）
             })
 
         if results:
@@ -141,7 +143,7 @@ def api_comments(video_id: str):
 # ===============================
 @app.get("/api/streamurl")
 def api_streamurl(video_id: str, quality: str = "best"):
-    # ① yt-dlp / proxy 系（仕様変更なし）
+    # ① yt-dlp / proxy 系
     for base in [
         EDU_STREAM_API_BASE_URL,
         STREAM_YTDL_API_BASE_URL,
@@ -151,7 +153,7 @@ def api_streamurl(video_id: str, quality: str = "best"):
         if data and data.get("url"):
             return RedirectResponse(data["url"])
 
-    # ② Invidious fallback（🔴 英語吹き替え除外）
+    # ② Invidious fallback（英語音声除外）
     for base in VIDEO_APIS:
         data = try_json(f"{base}/api/v1/videos/{video_id}")
         if not data:
@@ -161,7 +163,6 @@ def api_streamurl(video_id: str, quality: str = "best"):
             if not f.get("url"):
                 continue
 
-            # 🔴 英語音声を除外
             lang = (f.get("language") or "").lower()
             audio_track = str(f.get("audioTrack") or "").lower()
 
