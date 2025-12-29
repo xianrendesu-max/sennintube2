@@ -266,3 +266,5 @@ def api_streamurl(video_id: str, quality: str = "best"):
                 return RedirectResponse(f["url"])
 
     raise HTTPException(status_code=503, detail="Stream unavailable")
+from music import router as music_router
+app.include_router(music_router)
