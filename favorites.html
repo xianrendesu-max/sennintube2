@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>お気に入り - 仙人Music</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<body class="bg-gray-100 text-gray-800 min-h-screen flex flex-col">
+
+<!-- ================= HEADER ================= -->
+<header class="bg-white shadow sticky top-0 z-40">
+  <div class="max-w-3xl mx-auto p-4 flex items-center justify-between">
+    <h1 class="text-xl font-bold text-green-600">
+       仙人Music
+    </h1>
+    <button
+      onclick="location.href='/wakams'"
+      class="px-4 py-2 bg-green-500 text-white rounded-full hover:bg-green-600 transition">
+       ホーム
+    </button>
+  </div>
+</header>
+
+<!-- ================= MAIN ================= -->
+<main
+  id="favorites-list"
+  class="flex-1 max-w-3xl mx-auto w-full p-4 space-y-4">
+</main>
+
+<!-- ================= PLAYER ================= -->
+<div
+  id="player-container"
+  class="fixed bottom-0 left-0 w-full bg-white border-t shadow-lg hidden">
+  <iframe
+    id="player"
+    class="w-full"
+    style="height:90px"
+    allow="autoplay">
+  </iframe>
+</div>
+
+<!-- ================= FOOTER ================= -->
+<footer class="text-center text-xs text-gray-400 py-4">
+  © 仙人Music
+</footer>
+
+<!-- ================= SCRIPT ================= -->
+<script>
+function loadFavorites() {
+  const favorites = JSON.parse(localStorage.getItem('favorites')) || [];
+  const list = document.getElementById('favorites-list');
+  list.innerHTML = '';
+
+  if (favorites.length === 0) {
+    list.innerHTML = `
+      <p class="text-center text-gray-400 mt-12">
+        お気に入りの曲はまだありません 🎧
+      </p>`;
+    return;
+  }
+
+  favorites.forEach(track => {
+    const el = document.createElement('div');
+    el.className =
+      "flex items-center gap-4 bg-white rounded-xl shadow p-4 hover:shadow-md transition";
+
+    el.innerHTML = `
+      <img
+        src="${track.artwork_url || ''}"
+        class="w-16 h-16 rounded-lg object-cover bg-gray-200">
+
+      <div class="flex-1 min-w-0">
+        <p class="font-semibold truncate">${track.title}</p>
+      </div>
+
+      <div class="flex gap-2">
+        <button
+          class="play-btn w-10 h-10 rounded-full bg-green-500 hover:bg-green-600 text-white"
+          data-track-id="${track.id}">
+          ▶
+        </button>
+
+        <button
+          class="favorite-btn w-10 h-10 rounded-full border text-red-500"
+          data-id="${track.id}">
+          ❤️
+        </button>
+      </div>
+    `;
+    list.appendChild(el);
+  });
+}
+
+document.addEventListener('click', e => {
+  const play = e.target.closest('.play-btn');
+  const fav = e.target.closest('.favorite-btn');
+
+  if (play) playTrack(play.dataset.trackId);
+  if (fav) toggleFavorite(fav.dataset.id);
+});
+
+function playTrack(id) {
+  const iframe = document.getElementById('player');
+  iframe.src =
+    `https://w.soundcloud.com/player/?url=https%3A//api.soundcloud.com/tracks/${id}&auto_play=true`;
+  document.getElementById('player-container').classList.remove('hidden');
+}
+
+function toggleFavorite(id) {
+  let favorites = JSON.parse(localStorage.getItem('favorites')) || [];
+  const index = favorites.findIndex(t => t.id === id);
+
+  if (index !== -1) {
+    if (confirm('お気に入りから削除しますか？')) {
+      favorites.splice(index, 1);
+      toast('お気に入りを解除しました');
+    }
+  }
+
+  localStorage.setItem('favorites', JSON.stringify(favorites));
+  loadFavorites();
+}
+
+function toast(text) {
+  const el = document.createElement('div');
+  el.className =
+    "fixed top-4 right-4 bg-green-500 text-white px-4 py-2 rounded-lg shadow z-50";
+  el.textContent = text;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 2500);
+}
+
+loadFavorites();
+</script>
+
+</body>
+</html>
