@@ -142,7 +142,7 @@ def api_comments(video_id: str):
     return {"comments": [], "source": None}
 
 # ===============================
-# Channel
+# Channel（完全版・修整済）
 # ===============================
 @app.get("/api/channel")
 def api_channel(c: str):
@@ -154,14 +154,16 @@ def api_channel(c: str):
             continue
 
         # ===============================
-        # 動画一覧（並び替え対応）
+        # 動画一覧（並び替え完全対応）
         # ===============================
         latest_videos = []
+
         for v in ch.get("latestVideos", []):
+            # published を ISO 形式に正規化
             published_raw = v.get("published")
             published_iso = None
 
-            if published_raw:
+            if isinstance(published_raw, str):
                 try:
                     published_iso = published_raw.replace("Z", "+00:00")
                 except:
@@ -172,39 +174,63 @@ def api_channel(c: str):
                 "title": v.get("title"),
                 "author": ch.get("author"),
                 "authorId": c,
-                "viewCount": v.get("viewCount"),
-                "viewCountText": v.get("viewCountText"),
+                "viewCount": v.get("viewCount") or 0,
+                "viewCountText": v.get("viewCountText") or "0 回視聴",
                 "published": published_iso,
-                "publishedText": v.get("publishedText")
+                "publishedText": v.get("publishedText") or ""
             })
+
+        # ===============================
+        # 総再生回数 / 動画数 / 開設日 fallback
+        # ===============================
+        view_count = ch.get("viewCount")
+        video_count = ch.get("videoCount")
+        joined_date = ch.get("joinedDate")
+
+        # videoCount が無い場合は latestVideos 数
+        if not isinstance(video_count, int):
+            video_count = len(latest_videos)
+
+        # joinedDate が無い場合は最古動画の日付
+        if not isinstance(joined_date, str):
+            published_dates = [
+                v["published"]
+                for v in latest_videos
+                if isinstance(v.get("published"), str)
+            ]
+            joined_date = min(published_dates) if published_dates else None
 
         # ===============================
         # 関連チャンネル
         # ===============================
         related_channels = []
+
         for r in ch.get("relatedChannels", []):
+            icon = None
+            thumbs = r.get("authorThumbnails")
+
+            if isinstance(thumbs, list) and thumbs:
+                icon = thumbs[-1].get("url")
+
             related_channels.append({
                 "channelId": r.get("authorId"),
                 "name": r.get("author"),
-                "icon": (
-                    r.get("authorThumbnails", [{}])[-1].get("url")
-                    if r.get("authorThumbnails") else None
-                ),
-                "subCountText": r.get("subCountText")
+                "icon": icon,
+                "subCountText": r.get("subCountText") or "?"
             })
 
         # ===============================
-        # フロント向け整形レスポンス
+        # フロント向け最終レスポンス
         # ===============================
         return {
             "author": ch.get("author"),
             "authorId": c,
             "authorThumbnails": ch.get("authorThumbnails"),
-            "description": ch.get("description"),
-            "subCount": ch.get("subCount"),
-            "viewCount": ch.get("viewCount"),
-            "videoCount": ch.get("videoCount"),
-            "joinedDate": ch.get("joinedDate"),
+            "description": ch.get("description") or "",
+            "subCount": ch.get("subCount") or 0,
+            "viewCount": view_count or 0,
+            "videoCount": video_count,
+            "joinedDate": joined_date,
             "latestVideos": latest_videos,
             "relatedChannels": related_channels,
             "source": base
