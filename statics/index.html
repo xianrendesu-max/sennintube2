@@ -83,14 +83,14 @@ header button {
 
 .author {
   font-size: 12px;
-  color: #666;
+  color: #2563eb;
+  cursor: pointer;
 }
 </style>
 </head>
 
 <body>
 
-<!-- ===== 検索ヘッダー ===== -->
 <header>
   <input
     id="q"
@@ -100,10 +100,7 @@ header button {
   <button onclick="search()">検索</button>
 </header>
 
-<!-- ===== ステータス ===== -->
 <div id="status"></div>
-
-<!-- ===== 検索結果 ===== -->
 <div id="results" class="grid"></div>
 
 <script>
@@ -119,7 +116,6 @@ async function search() {
 
   try {
     const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
-
     if (!res.ok) {
       status.textContent = "検索できませんでした";
       return;
@@ -149,7 +145,10 @@ async function search() {
       card.innerHTML = `
         <img class="thumb" src="${thumb}" loading="lazy">
         <div class="title">${escapeHtml(v.title || "")}</div>
-        <div class="author">${escapeHtml(v.author || "")}</div>
+        <div class="author"
+             onclick="goChannel(event, '${v.authorId || ""}')">
+          ${escapeHtml(v.author || "")}
+        </div>
       `;
 
       grid.appendChild(card);
@@ -161,7 +160,12 @@ async function search() {
   }
 }
 
-/* ===== XSS対策（最低限） ===== */
+function goChannel(event, channelId) {
+  event.stopPropagation();
+  if (!channelId) return;
+  location.href = `/static/channel.html?c=${channelId}`;
+}
+
 function escapeHtml(str) {
   return str
     .replace(/&/g, "&amp;")
@@ -172,8 +176,6 @@ function escapeHtml(str) {
 }
 </script>
 
-<!-- タグはここから -->
-<!-- kauntah ここから -->
 <div style="text-align:center; margin:20px 0;">
   <img
     src="https://kauntah-svg.vercel.app/counter.svg"
@@ -181,8 +183,6 @@ function escapeHtml(str) {
     alt="アクセスカウンター"
   />
 </div>
-<!-- kauntah ここまで -->
-<!-- ここまで -->
 
 </body>
-</html>
+  </html>
