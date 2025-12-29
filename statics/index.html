@@ -119,12 +119,12 @@ header button {
   <button onclick="search()">検索</button>
 </header>
 
-<!-- 音楽アプリ起動ボタン -->
+<!-- 仙人Music 起動ボタン（検索前のみ表示） -->
 <div
   id="music-launch"
   class="music-launch"
-  onclick="location.href='/wakams'">
-  🎵 仙人Music を開く
+  onclick="location.href='/music'">
+  　仙人Music を開く
 </div>
 
 <div id="status"></div>
@@ -139,7 +139,7 @@ async function search() {
 
   if (!q) return;
 
-  /* ★ 検索されたら音楽ボタンを消す（追加） */
+  /* 検索されたら音楽ボタンを非表示 */
   if (musicBtn) {
     musicBtn.style.display = "none";
   }
