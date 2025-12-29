@@ -177,3 +177,19 @@ def api_streamurl(video_id: str, quality: str = "best"):
                 return RedirectResponse(f["url"])
 
     raise HTTPException(503, "Stream unavailable")
+
+ # ===============================
+ # Channel
+ # ===============================
+ @app.get("/api/channel")
+ def api_channel(c: str):
+     random.shuffle(VIDEO_APIS)
+
+     for base in VIDEO_APIS:
+         data = try_json(f"{base}/api/v1/channels/{c}")
+         if data:
+             data["source"] = base
+             return data
+
+     raise HTTPException(503, "Channel unavailable")
+ 
