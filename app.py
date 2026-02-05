@@ -4,6 +4,8 @@ from fastapi.staticfiles import StaticFiles
 import requests
 import random
 import os
+import subprocess
+import uuid
 
 app = FastAPI()
 
@@ -72,6 +74,49 @@ def try_json(url, params=None):
     except Exception as e:
         print("request error:", e)
     return None
+
+def pick_video_audio(formats, quality="best"):
+    video_url = None
+    audio_url = None
+
+    for f in formats:
+        if f.get("type", "").startswith("video") and f.get("url"):
+            if quality == "best" or quality in (f.get("qualityLabel") or ""):
+                video_url = f["url"]
+                break
+
+    for f in formats:
+        if f.get("type", "").startswith("audio") and f.get("url"):
+            lang = (f.get("language") or "").lower()
+            if "en" in lang:
+                continue
+            audio_url = f["url"]
+            break
+
+    return video_url, audio_url
+
+def mux_video_audio_ios(video_url, audio_url):
+    out = f"/tmp/{uuid.uuid4()}.mp4"
+
+    cmd = [
+        "ffmpeg",
+        "-y",
+        "-i", video_url,
+        "-i", audio_url,
+        "-map", "0:v:0",
+        "-map", "1:a:0",
+        "-c:v", "libx264",
+        "-profile:v", "main",
+        "-level", "3.1",
+        "-pix_fmt", "yuv420p",
+        "-c:a", "aac",
+        "-movflags", "+faststart",
+        out
+    ]
+
+    subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    return out
 
 # ===============================
 # Search
@@ -230,7 +275,35 @@ def api_channel(c: str):
     raise HTTPException(status_code=503, detail="Channel unavailable")
 
 # ===============================
-# Stream URL ONLY（日本語音声優先）
+# Stream（iOS対応・映像＋音声合成）
+# ===============================
+@app.get("/api/stream")
+def api_stream(video_id: str, quality: str = "best"):
+    for base in VIDEO_APIS:
+        data = try_json(f"{base}/api/v1/videos/{video_id}")
+        if not data:
+            continue
+
+        video_url, audio_url = pick_video_audio(
+            data.get("adaptiveFormats", []),
+            quality
+        )
+
+        if not video_url or not audio_url:
+            continue
+
+        output = mux_video_audio_ios(video_url, audio_url)
+
+        return FileResponse(
+            output,
+            media_type="video/mp4",
+            filename=f"{video_id}.mp4"
+        )
+
+    raise HTTPException(status_code=503, detail="Stream unavailable")
+
+# ===============================
+# Stream URL ONLY（旧）
 # ===============================
 @app.get("/api/streamurl")
 def api_streamurl(video_id: str, quality: str = "best"):
@@ -266,5 +339,6 @@ def api_streamurl(video_id: str, quality: str = "best"):
                 return RedirectResponse(f["url"])
 
     raise HTTPException(status_code=503, detail="Stream unavailable")
+
 from music import router as music_router
 app.include_router(music_router)
