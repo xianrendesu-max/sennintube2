@@ -80,22 +80,6 @@ body {
   white-space: pre-wrap;
 }
 
-/* ===== ストリーム ===== */
-.stream select,
-.stream button {
-  width: 100%;
-  padding: 10px;
-  font-size: 14px;
-  margin-top: 6px;
-}
-
-.stream button {
-  background: #0ea5e9;
-  color: #fff;
-  border: none;
-  cursor: pointer;
-}
-
 /* ===== コメント ===== */
 .comment {
   border-top: 1px solid #eee;
@@ -135,16 +119,6 @@ body {
   <div id="title" class="title">読み込み中...</div>
   <div id="author" class="author"></div>
   <div id="desc" class="desc"></div>
-
-  <!-- ===== ストリーム ===== -->
-  <div class="stream">
-    <select id="quality">
-      <option value="360p">360p</option>
-      <option value="720p">720p</option>
-      <option value="best">最高画質</option>
-    </select>
-    <button onclick="playHighQuality()">▶ 高画質で再生</button>
-  </div>
 </div>
 
 <!-- ===== コメント ===== -->
@@ -159,8 +133,6 @@ const videoId = new URLSearchParams(location.search).get("v");
 const player = document.getElementById("player");
 const hqVideo = document.getElementById("hqVideo");
 const hqAudio = document.getElementById("hqAudio");
-
-const INVIDIOUS_EMBED = "https://pol1.iv.ggtyler.dev/embed/";
 
 const btnNocookie = document.getElementById("btn-nocookie");
 const btnInvidious = document.getElementById("btn-invidious");
@@ -180,7 +152,7 @@ function resetHQ() {
   player.style.display = "block";
 }
 
-function setPlayer(type) {
+async function setPlayer(type) {
   resetHQ();
   clearActive();
 
@@ -190,8 +162,32 @@ function setPlayer(type) {
   }
 
   if (type === "invidious") {
-    player.src = `${INVIDIOUS_EMBED}${videoId}`;
     btnInvidious.classList.add("active");
+    player.style.display = "none";
+    hqVideo.style.display = "block";
+
+    const res = await fetch(`/api/streamurl?video_id=${videoId}`);
+    const data = await res.json();
+
+    hqVideo.src = data.video;
+    hqAudio.src = data.audio;
+
+    hqVideo.load();
+    hqAudio.load();
+
+    hqVideo.addEventListener("play", () => hqAudio.play());
+    hqVideo.addEventListener("pause", () => hqAudio.pause());
+    hqVideo.addEventListener("seeking", () => {
+      hqAudio.currentTime = hqVideo.currentTime;
+    });
+
+    hqVideo.addEventListener("timeupdate", () => {
+      if (Math.abs(hqVideo.currentTime - hqAudio.currentTime) > 0.4) {
+        hqAudio.currentTime = hqVideo.currentTime + 0.1;
+      }
+    });
+
+    hqVideo.play();
   }
 }
 
@@ -234,46 +230,6 @@ fetch(`/api/comments?video_id=${videoId}`)
   .catch(() => {
     document.getElementById("comments").textContent = "コメント取得失敗";
   });
-
-/* ===== 高画質（映像＋音声分離） ===== */
-async function playHighQuality() {
-  player.style.display = "none";
-  hqVideo.style.display = "block";
-
-  const q = document.getElementById("quality").value;
-
-  const res = await fetch(`/api/streamurl?video_id=${videoId}&quality=${q}`);
-  const data = await res.json();
-
-  /*
-    API想定レスポンス:
-    {
-      "video": "映像のみURL (webm/mp4)",
-      "audio": "音声URL (m4a/webm)"
-    }
-  */
-
-  hqVideo.src = data.video;
-  hqAudio.src = data.audio;
-
-  hqVideo.load();
-  hqAudio.load();
-
-  /* === 同期処理 === */
-  hqVideo.addEventListener("play", () => hqAudio.play());
-  hqVideo.addEventListener("pause", () => hqAudio.pause());
-  hqVideo.addEventListener("seeking", () => {
-    hqAudio.currentTime = hqVideo.currentTime;
-  });
-
-  hqVideo.addEventListener("timeupdate", () => {
-    if (Math.abs(hqVideo.currentTime - hqAudio.currentTime) > 0.4) {
-      hqAudio.currentTime = hqVideo.currentTime + 0.1;
-    }
-  });
-
-  hqVideo.play();
-}
 </script>
 
 </body>
