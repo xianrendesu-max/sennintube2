@@ -96,6 +96,11 @@ body {
   cursor: pointer;
   margin-top: 4px;
 }
+
+/* ===== 検索結果表示時 ===== */
+body.results-mode #search-widget {
+  display: none;
+}
 </style>
 </head>
 
@@ -147,6 +152,8 @@ async function search() {
       status.textContent = "検索結果がありません";
       return;
     }
+
+    document.body.classList.add("results-mode");
 
     for (const v of results) {
       const card = document.createElement("div");
