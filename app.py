@@ -341,3 +341,4 @@ def api_streamurl(video_id: str, quality: str = "best"):
             }
 
     raise HTTPException(status_code=503, detail="Stream unavailable")
+
