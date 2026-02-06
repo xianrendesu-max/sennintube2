@@ -45,9 +45,11 @@ body {
   width: 100%;
   background: #000;
   aspect-ratio: 16 / 9;
+  position: relative;
 }
 
-.video-wrap iframe {
+.video-wrap iframe,
+.video-wrap video {
   width: 100%;
   height: 100%;
   border: none;
@@ -122,6 +124,10 @@ body {
 <!-- ===== 動画 ===== -->
 <div class="video-wrap">
   <iframe id="player" allowfullscreen></iframe>
+
+  <!-- 高画質用 -->
+  <video id="hqVideo" controls style="display:none"></video>
+  <audio id="hqAudio" style="display:none"></audio>
 </div>
 
 <!-- ===== 情報 ===== -->
@@ -137,7 +143,7 @@ body {
       <option value="720p">720p</option>
       <option value="best">最高画質</option>
     </select>
-    <button onclick="openStream()">▶ ストリーム再生</button>
+    <button onclick="playHighQuality()">▶ 高画質で再生</button>
   </div>
 </div>
 
@@ -148,8 +154,11 @@ body {
 </div>
 
 <script>
+/* ===== 初期設定 ===== */
 const videoId = new URLSearchParams(location.search).get("v");
 const player = document.getElementById("player");
+const hqVideo = document.getElementById("hqVideo");
+const hqAudio = document.getElementById("hqAudio");
 
 const INVIDIOUS_EMBED = "https://pol1.iv.ggtyler.dev/embed/";
 
@@ -162,7 +171,17 @@ function clearActive() {
   btnInvidious.classList.remove("active");
 }
 
+function resetHQ() {
+  hqVideo.pause();
+  hqAudio.pause();
+  hqVideo.src = "";
+  hqAudio.src = "";
+  hqVideo.style.display = "none";
+  player.style.display = "block";
+}
+
 function setPlayer(type) {
+  resetHQ();
   clearActive();
 
   if (type === "nocookie") {
@@ -216,12 +235,46 @@ fetch(`/api/comments?video_id=${videoId}`)
     document.getElementById("comments").textContent = "コメント取得失敗";
   });
 
-/* ===== streamurl へ遷移 ===== */
-function openStream() {
+/* ===== 高画質（映像＋音声分離） ===== */
+async function playHighQuality() {
+  player.style.display = "none";
+  hqVideo.style.display = "block";
+
   const q = document.getElementById("quality").value;
-  location.href = `/api/streamurl?video_id=${videoId}&quality=${q}`;
+
+  const res = await fetch(`/api/streamurl?video_id=${videoId}&quality=${q}`);
+  const data = await res.json();
+
+  /*
+    API想定レスポンス:
+    {
+      "video": "映像のみURL (webm/mp4)",
+      "audio": "音声URL (m4a/webm)"
+    }
+  */
+
+  hqVideo.src = data.video;
+  hqAudio.src = data.audio;
+
+  hqVideo.load();
+  hqAudio.load();
+
+  /* === 同期処理 === */
+  hqVideo.addEventListener("play", () => hqAudio.play());
+  hqVideo.addEventListener("pause", () => hqAudio.pause());
+  hqVideo.addEventListener("seeking", () => {
+    hqAudio.currentTime = hqVideo.currentTime;
+  });
+
+  hqVideo.addEventListener("timeupdate", () => {
+    if (Math.abs(hqVideo.currentTime - hqAudio.currentTime) > 0.4) {
+      hqAudio.currentTime = hqVideo.currentTime + 0.1;
+    }
+  });
+
+  hqVideo.play();
 }
 </script>
 
 </body>
-    </html>
+</html>
